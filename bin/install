@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# bin/install — register the plugin with Claude Code and verify connectivity.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PLUGIN_NAME="ads-copilot"
+TARGET="$HOME/.claude/plugins/$PLUGIN_NAME"
+
+# 1. Symlink the plugin into ~/.claude/plugins/
+mkdir -p "$HOME/.claude/plugins"
+if [[ -L "$TARGET" || -e "$TARGET" ]]; then
+  echo "[install] removing existing $TARGET"
+  rm -rf "$TARGET"
+fi
+ln -s "$REPO_DIR" "$TARGET"
+echo "[install] linked $REPO_DIR -> $TARGET"
+
+# 2. Run unit tests for bin/ga
+echo "[install] running bin/test-ga.sh"
+"$REPO_DIR/bin/test-ga.sh"
+
+# 3. Live smoke test — verify Composio + Google Ads connectivity
+echo "[install] live smoke test: composio execute GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS"
+out=$(composio execute GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS -d '{}' 2>&1) || {
+  echo "[install] FAILED — composio call errored:"
+  echo "$out"
+  echo
+  echo "Likely fixes:"
+  echo "  - Run \`composio login\` to authenticate the CLI"
+  echo "  - Verify Composio googleads toolkit is connected"
+  exit 1
+}
+
+echo "$out" | jq -e '.successful == true' >/dev/null || {
+  echo "[install] FAILED — Composio returned a non-success envelope:"
+  echo "$out" | jq .
+  exit 1
+}
+
+echo "[install] OK. Accessible customers:"
+echo "$out" | jq -r '.data | fromjson? // .data'
+
+echo
+echo "[install] Done. Open Claude Code in any folder with a workspace.json"
+echo "          and run /ads-daily to start."
