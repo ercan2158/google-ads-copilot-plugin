@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# bin/ga — single shell wrapper around Composio CLI + Composio proxy_execute
+# for Google Ads. The only file in the plugin that touches `composio` or
+# `curl`. If Composio's CLI shape changes, fix here.
+
+set -euo pipefail
+
+SECRETS_HELPER="${SECRETS_HELPER:-$HOME/.config/secrets/get-secret.sh}"
+COMPOSIO_API_BASE="${COMPOSIO_API_BASE:-https://backend.composio.dev}"
+
+usage() {
+  cat <<EOF >&2
+Usage: ga <subcommand> [args]
+
+Subcommands:
+  query "<GAQL>"                              Run a read-only GAQL query.
+  proxy <METHOD> <ENDPOINT> [<JSON-BODY>]     Proxy an arbitrary Google Ads
+                                              REST call (mutations included).
+
+Examples:
+  ga query "SELECT campaign.id, campaign.name FROM campaign LIMIT 5"
+  ga proxy POST /v18/customers/8191097521/campaignCriteria:mutate '{"operations":[...]}'
+EOF
+  exit 64
+}
+
+unwrap() {
+  # Composio returns {"data":"<json-string-or-object>","successful":true}.
+  # Unwrap to the inner data on success; emit error on failure.
+  jq -e '
+    if .successful != true then
+      ("composio error: " + (.error // "unknown")) | halt_error(1)
+    elif (.data | type) == "string" then
+      .data | fromjson
+    else
+      .data
+    end
+  '
+}
+
+cmd_query() {
+  local q="${1:-}"
+  [[ -z "$q" ]] && { echo "ga query: missing GAQL string" >&2; exit 64; }
+  local payload
+  payload=$(jq -nc --arg q "$q" '{query:$q}')
+  composio execute GOOGLEADS_QUERY -d "$payload" | unwrap
+}
+
+cmd_proxy() {
+  local method="${1:-}" endpoint="${2:-}" body="${3:-}"
+  [[ -z "$method" || -z "$endpoint" ]] && {
+    echo "ga proxy: need METHOD and ENDPOINT" >&2; exit 64
+  }
+  local dev_token api_key payload
+  dev_token=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
+  api_key=$("$SECRETS_HELPER" composio COMPOSIO_API_KEY)
+  payload=$(jq -nc \
+    --arg m "$method" \
+    --arg e "$endpoint" \
+    --arg dt "$dev_token" \
+    --argjson b "${body:-null}" \
+    '{
+      toolkit_slug: "googleads",
+      endpoint:     $e,
+      method:       $m,
+      body:         $b,
+      parameters:   [{name:"developer-token", value:$dt, type:"header"}]
+    }')
+  curl -sS -X POST \
+    "$COMPOSIO_API_BASE/api/v3/tool_router/session/default/proxy_execute" \
+    -H "x-api-key: $api_key" \
+    -H "Content-Type: application/json" \
+    -d "$payload" | unwrap
+}
+
+main() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    query) cmd_query "$@" ;;
+    proxy) cmd_proxy "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) echo "ga: unknown subcommand: $sub" >&2; usage ;;
+  esac
+}
+
+main "$@"
