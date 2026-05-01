@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
-# bin/ga — single shell wrapper around the `composio` CLI for Google Ads.
-# Two subcommands: query (slug-based read via composio execute) and proxy
-# (curl-like REST call via composio proxy, with the developer-token header
-# attached). The only file in the plugin that touches `composio`. If
-# Composio's CLI shape changes, fix here.
+# bin/ga — direct Google Ads REST API wrapper for the ads-copilot plugin.
+# Two subcommands: query (GAQL search) and proxy (arbitrary REST). All calls
+# attach a fresh OAuth access token (refreshed from the stored refresh_token
+# every invocation), the developer token, and the login-customer-id.
+#
+# This is the only file in the plugin that calls `curl` against Google.
+# Everything else (skills, commands, agent) goes through `bin/ga`.
 
 set -euo pipefail
 
 SECRETS_HELPER="${SECRETS_HELPER:-$HOME/.config/secrets/get-secret.sh}"
 GOOGLEADS_API_BASE="${GOOGLEADS_API_BASE:-https://googleads.googleapis.com}"
+GOOGLEADS_API_VERSION="${GOOGLEADS_API_VERSION:-v23}"
+OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}"
 
 usage() {
   cat <<EOF >&2
 Usage: ga <subcommand> [args]
 
 Subcommands:
-  query "<GAQL>"                              Run a read-only GAQL query.
-  proxy <METHOD> <PATH> [<JSON-BODY>]         Proxy an arbitrary Google Ads
-                                              REST call (mutations included).
-                                              PATH is the path part only,
-                                              e.g. /v23/customers:listAccessibleCustomers.
+  query "<GAQL>"                        Run a GAQL search against the bound
+                                        workspace's customer_id.
+  proxy <METHOD> <PATH> [<JSON-BODY>]   Send an arbitrary REST call. PATH is
+                                        a path-only string starting with /,
+                                        e.g. /v23/customers:listAccessibleCustomers.
 
 Examples:
   ga query "SELECT campaign.id, campaign.name FROM campaign LIMIT 5"
@@ -29,31 +33,88 @@ EOF
   exit 64
 }
 
-unwrap() {
-  # Composio's `execute` returns {"data":"<json-string-or-object>","successful":true}.
-  # Unwrap to the inner data on success; emit error on failure (handling
-  # both string and object error shapes).
-  jq -e '
-    if .successful != true then
-      ("composio error: " + (
-        if (.error | type) == "object" then (.error | tojson)
-        else (.error // "unknown" | tostring)
-        end
-      )) | halt_error(1)
-    elif (.data | type) == "string" then
-      .data | fromjson
-    else
-      .data
-    end
-  '
+# Walk up from PWD looking for workspace.json. Up to 6 levels. Echo absolute
+# path to stdout on success; non-zero exit + stderr message on failure.
+find_workspace() {
+  local dir="$PWD"
+  local i
+  for i in 1 2 3 4 5 6; do
+    if [[ -f "$dir/workspace.json" ]]; then
+      echo "$dir/workspace.json"
+      return 0
+    fi
+    [[ "$dir" == "/" ]] && break
+    dir=$(cd "$dir/.." && pwd)
+  done
+  echo "ga: workspace.json not found in cwd or any of its 6 ancestors" >&2
+  return 1
+}
+
+get_access_token() {
+  local client_id client_secret refresh_token resp tok
+  client_id=$("$SECRETS_HELPER" google-ads CLIENT_ID)
+  client_secret=$("$SECRETS_HELPER" google-ads CLIENT_SECRET)
+  refresh_token=$("$SECRETS_HELPER" google-ads REFRESH_TOKEN)
+
+  resp=$(curl -sS -X POST "$OAUTH_TOKEN_URL" \
+    --data-urlencode "client_id=$client_id" \
+    --data-urlencode "client_secret=$client_secret" \
+    --data-urlencode "refresh_token=$refresh_token" \
+    --data-urlencode "grant_type=refresh_token")
+
+  tok=$(echo "$resp" | jq -r '.access_token // empty')
+  if [[ -z "$tok" ]]; then
+    {
+      echo "ga: OAuth token refresh failed."
+      echo "Response from $OAUTH_TOKEN_URL:"
+      echo "$resp" | jq . 2>/dev/null || echo "$resp"
+      echo
+      echo "Most likely cause: the refresh_token in ~/.config/secrets/google-ads/credentials"
+      echo "was revoked or never set. Re-run \`bin/oauth-bootstrap\` to refresh it."
+    } >&2
+    exit 1
+  fi
+  echo "$tok"
+}
+
+# load_context populates global vars used by curl callers:
+#   _GA_ACCESS_TOKEN, _GA_DEV_TOKEN, _GA_MGR_ID, _GA_CUSTOMER_ID
+load_context() {
+  local workspace_json
+  workspace_json=$(find_workspace)
+  _GA_CUSTOMER_ID=$(jq -re '.account.customer_id' "$workspace_json")
+  _GA_MGR_ID=$(jq -r '.account.manager_customer_id // empty' "$workspace_json")
+  _GA_DEV_TOKEN=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
+  _GA_ACCESS_TOKEN=$(get_access_token)
+}
+
+# build_header_args fills the global array _GA_HEADER_ARGS with -H pairs
+# ready to pass directly to curl. Caller must call load_context first.
+build_header_args() {
+  _GA_HEADER_ARGS=(
+    -H "Authorization: Bearer $_GA_ACCESS_TOKEN"
+    -H "developer-token: $_GA_DEV_TOKEN"
+    -H "Content-Type: application/json"
+  )
+  if [[ -n "$_GA_MGR_ID" ]]; then
+    _GA_HEADER_ARGS+=( -H "login-customer-id: $_GA_MGR_ID" )
+  fi
 }
 
 cmd_query() {
   local q="${1:-}"
   [[ -z "$q" ]] && { echo "ga query: missing GAQL string" >&2; exit 64; }
-  local payload
-  payload=$(jq -nc --arg q "$q" '{query:$q}')
-  composio execute GOOGLEADS_QUERY -d "$payload" | unwrap
+
+  local _GA_ACCESS_TOKEN _GA_DEV_TOKEN _GA_MGR_ID _GA_CUSTOMER_ID
+  local _GA_HEADER_ARGS
+  load_context
+  build_header_args
+
+  local url body
+  url="${GOOGLEADS_API_BASE}/${GOOGLEADS_API_VERSION}/customers/${_GA_CUSTOMER_ID}/googleAds:search"
+  body=$(jq -nc --arg q "$q" '{query:$q}')
+
+  curl -sS -X POST "$url" "${_GA_HEADER_ARGS[@]}" -d "$body"
 }
 
 cmd_proxy() {
@@ -61,15 +122,19 @@ cmd_proxy() {
   [[ -z "$method" || -z "$path" ]] && {
     echo "ga proxy: need METHOD and PATH" >&2; exit 64
   }
-  local dev_token full_url
-  dev_token=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
-  full_url="${GOOGLEADS_API_BASE}${path}"
 
-  local args=( proxy "$full_url" --toolkit googleads -X "$method" -H "developer-token: $dev_token" )
+  local _GA_ACCESS_TOKEN _GA_DEV_TOKEN _GA_MGR_ID _GA_CUSTOMER_ID
+  local _GA_HEADER_ARGS
+  load_context
+  build_header_args
+
+  local url="${GOOGLEADS_API_BASE}${path}"
+
   if [[ -n "$body" && "$body" != "null" ]]; then
-    args+=( -H "content-type: application/json" -d "$body" )
+    curl -sS -X "$method" "$url" "${_GA_HEADER_ARGS[@]}" -d "$body"
+  else
+    curl -sS -X "$method" "$url" "${_GA_HEADER_ARGS[@]}"
   fi
-  composio "${args[@]}"
 }
 
 main() {

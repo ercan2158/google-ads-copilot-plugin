@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# bin/oauth-bootstrap — one-time setup of the Google Ads API refresh_token.
+#
+# Prereqs:
+#   - You have created an OAuth 2.0 Desktop client in Google Cloud Console
+#     (in the SAME Cloud project as your Google Ads developer token).
+#   - You have written CLIENT_ID and CLIENT_SECRET to
+#     ~/.config/secrets/google-ads/credentials (one per line, KEY=value).
+#   - DEVELOPER_TOKEN is also in that file (you set this up earlier).
+#
+# Effect: appends/updates REFRESH_TOKEN= in the same secrets file.
+
+set -euo pipefail
+
+SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
+SCOPE="https://www.googleapis.com/auth/adwords"
+PORT="${OAUTH_PORT:-8765}"
+
+if [[ ! -f "$SECRETS_FILE" ]]; then
+  echo "$SECRETS_FILE not found." >&2
+  echo "Create it first with at least:" >&2
+  echo "  CLIENT_ID=<your oauth client id>" >&2
+  echo "  CLIENT_SECRET=<your oauth client secret>" >&2
+  echo "  DEVELOPER_TOKEN=<your google ads developer token>" >&2
+  exit 1
+fi
+
+client_id=$(grep '^CLIENT_ID=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
+client_secret=$(grep '^CLIENT_SECRET=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
+if [[ -z "$client_id" || -z "$client_secret" ]]; then
+  echo "CLIENT_ID and CLIENT_SECRET must be set in $SECRETS_FILE" >&2
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null; then
+  echo "python3 required but not found in PATH" >&2
+  exit 1
+fi
+
+redirect_uri="http://127.0.0.1:${PORT}"
+state=$(openssl rand -hex 12 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(12))')
+
+# URL-encode scope and redirect_uri the way Google expects
+auth_url=$(python3 -c "
+import urllib.parse
+params = {
+  'response_type': 'code',
+  'access_type':   'offline',
+  'prompt':        'consent',
+  'client_id':     '$client_id',
+  'redirect_uri':  '$redirect_uri',
+  'scope':         '$SCOPE',
+  'state':         '$state',
+}
+print('https://accounts.google.com/o/oauth2/v2/auth?' + urllib.parse.urlencode(params))
+")
+
+cat <<EOF
+[oauth-bootstrap] Open this URL in your browser:
+
+$auth_url
+
+[oauth-bootstrap] Sign in with the Google account that owns access to your
+                  Google Ads account, then grant the AdWords scope. The
+                  browser will redirect to http://127.0.0.1:${PORT} (which
+                  this script is listening on). Wait for "you can close
+                  this tab" — the auth code will be captured automatically.
+
+[oauth-bootstrap] Listening on 127.0.0.1:${PORT} ...
+EOF
+
+# Listen for the redirect, capture the query string, exit.
+qs=$(python3 - "$PORT" <<'PYEOF'
+import sys, http.server, urllib.parse
+port = int(sys.argv[1])
+captured = {}
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        u = urllib.parse.urlparse(self.path)
+        captured['qs'] = u.query
+        self.send_response(200); self.send_header('Content-type','text/html'); self.end_headers()
+        self.wfile.write(b'<!doctype html><h1>OK, you can close this tab.</h1>')
+    def log_message(self, *a, **kw): pass
+srv = http.server.HTTPServer(('127.0.0.1', port), H)
+srv.handle_request()
+print(captured.get('qs',''))
+PYEOF
+)
+
+# Parse the query string for code + state
+parsed=$(python3 -c "
+import urllib.parse, sys, json
+q = urllib.parse.parse_qs('''$qs''')
+print(json.dumps({k: v[0] for k, v in q.items()}))
+")
+code=$(echo "$parsed" | jq -re '.code')
+got_state=$(echo "$parsed" | jq -re '.state // empty')
+
+if [[ "$got_state" != "$state" ]]; then
+  echo "[oauth-bootstrap] state mismatch — refusing to continue" >&2
+  exit 1
+fi
+
+echo "[oauth-bootstrap] Got auth code, exchanging for refresh_token..."
+
+token_resp=$(curl -sS -X POST https://oauth2.googleapis.com/token \
+  --data-urlencode "code=$code" \
+  --data-urlencode "client_id=$client_id" \
+  --data-urlencode "client_secret=$client_secret" \
+  --data-urlencode "redirect_uri=$redirect_uri" \
+  --data-urlencode "grant_type=authorization_code")
+
+refresh_token=$(echo "$token_resp" | jq -r '.refresh_token // empty')
+if [[ -z "$refresh_token" ]]; then
+  {
+    echo "[oauth-bootstrap] No refresh_token returned. Response:"
+    echo "$token_resp" | jq .
+  } >&2
+  exit 1
+fi
+
+# Update or append REFRESH_TOKEN in the secrets file
+if grep -q '^REFRESH_TOKEN=' "$SECRETS_FILE"; then
+  # Use a sed-portable replacement (creates a backup then removes it)
+  python3 -c "
+import sys
+p = '$SECRETS_FILE'
+new_line = 'REFRESH_TOKEN=$refresh_token'
+with open(p) as f:
+    lines = f.readlines()
+with open(p, 'w') as f:
+    for line in lines:
+        if line.startswith('REFRESH_TOKEN='):
+            f.write(new_line + '\n')
+        else:
+            f.write(line)
+"
+else
+  printf '\nREFRESH_TOKEN=%s\n' "$refresh_token" >> "$SECRETS_FILE"
+fi
+chmod 600 "$SECRETS_FILE"
+
+echo "[oauth-bootstrap] Saved REFRESH_TOKEN to $SECRETS_FILE"
+echo "[oauth-bootstrap] Done. Run \`bin/install\` to verify connectivity."

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/test-ga.sh — bash assertion suite for bin/ga.
-# Mocks `composio` via PATH override so we test wiring without hitting any
-# real API.
+# Mocks `curl` + the secrets helper via PATH/env override. Creates a temp
+# workspace.json so find_workspace() resolves. No real network calls.
 
 set -euo pipefail
 
@@ -21,68 +21,115 @@ assert_eq() {
   fi
 }
 
-# ---- Setup mock PATH ----------------------------------------------------
+# ---- Setup mock workspace + PATH ---------------------------------------
+WORKDIR=$(mktemp -d)
 MOCKDIR=$(mktemp -d)
-trap 'rm -rf "$MOCKDIR"' EXIT
+trap 'rm -rf "$WORKDIR" "$MOCKDIR"' EXIT
 
-cat > "$MOCKDIR/composio" <<'EOF'
+cat > "$WORKDIR/workspace.json" <<EOF
+{
+  "schema_version": 1,
+  "name": "test",
+  "account": {
+    "customer_id": "1234567890",
+    "manager_customer_id": "9999999999",
+    "currency": "EUR",
+    "timezone": "Europe/Berlin"
+  }
+}
+EOF
+
+# Mock curl:
+#  - POST to oauth2.googleapis.com/token returns {"access_token":"mock-tok"}
+#  - Anything else returns a canned Google Ads response, captures the URL+body+headers
+#    into a sidecar file so tests can inspect them.
+cat > "$MOCKDIR/curl" <<'EOF'
 #!/usr/bin/env bash
-# Mock composio: handles `execute GOOGLEADS_QUERY` and `proxy <url> ...`.
-case "${1:-}" in
-  execute)
-    if [[ "${2:-}" == "GOOGLEADS_QUERY" ]]; then
-      echo '{"data":"[{\"campaign\":{\"id\":\"42\"}}]","successful":true}'
-      exit 0
-    fi
+# Mock curl. Determines token-vs-api by URL; logs invocation for inspection.
+LOG="${MOCK_CURL_LOG:-/tmp/mock-curl.log}"
+url=""; method="GET"; body=""
+hdrs=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -sS) shift ;;
+    -X)  method="$2"; shift 2 ;;
+    -H)  hdrs+=( "$2" ); shift 2 ;;
+    -d)  body="$2"; shift 2 ;;
+    --data-urlencode) body="${body}${body:+&}$2"; shift 2 ;;
+    -*)  shift ;;
+    *)   url="$1"; shift ;;
+  esac
+done
+{
+  echo "URL=$url"
+  echo "METHOD=$method"
+  echo "BODY=$body"
+  for h in "${hdrs[@]}"; do echo "HEADER=$h"; done
+  echo "---"
+} >> "$LOG"
+case "$url" in
+  *oauth2.googleapis.com/token*)
+    echo '{"access_token":"mock-access-tok","expires_in":3599,"token_type":"Bearer"}'
     ;;
-  proxy)
-    # Sanity-check: second arg is a googleads URL, --toolkit googleads is
-    # present, developer-token header is supplied.
-    url="${2:-}"
-    if [[ "$url" != *"googleads.googleapis.com"* ]]; then
-      echo '{"error":"mock proxy: bad url"}' >&2
-      exit 1
-    fi
-    saw_toolkit=0; saw_dev_token=0
-    shift 2
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --toolkit) [[ "${2:-}" == "googleads" ]] && saw_toolkit=1; shift 2 ;;
-        -H)        [[ "${2:-}" == developer-token:* ]] && saw_dev_token=1; shift 2 ;;
-        *)         shift ;;
-      esac
-    done
-    if [[ $saw_toolkit -eq 0 || $saw_dev_token -eq 0 ]]; then
-      echo "{\"error\":\"mock proxy: missing toolkit ($saw_toolkit) or dev-token ($saw_dev_token)\"}" >&2
-      exit 1
-    fi
-    echo '{"results":[{"resourceName":"customers/123/campaigns/42"}]}'
-    exit 0
+  *googleads.googleapis.com*)
+    echo '{"results":[{"campaign":{"id":"42","name":"Brand"}}]}'
+    ;;
+  *)
+    echo "{\"error\":\"mock curl: unexpected url $url\"}" >&2
+    exit 22
     ;;
 esac
-echo '{"data":null,"successful":false,"error":"unknown mock command"}' >&2
-exit 1
 EOF
-chmod +x "$MOCKDIR/composio"
-export PATH="$MOCKDIR:$PATH"
+chmod +x "$MOCKDIR/curl"
 
-# Mock get-secret.sh — ga proxy reads the dev token through it.
+# Mock secrets helper
 cat > "$MOCKDIR/get-secret.sh" <<'EOF'
 #!/usr/bin/env bash
 case "$1:$2" in
-  google-ads:DEVELOPER_TOKEN) echo "mock-dev-token-12345" ;;
+  google-ads:CLIENT_ID)        echo "mock-client-id" ;;
+  google-ads:CLIENT_SECRET)    echo "mock-client-secret" ;;
+  google-ads:REFRESH_TOKEN)    echo "mock-refresh-token" ;;
+  google-ads:DEVELOPER_TOKEN)  echo "mock-dev-token" ;;
   *) echo "mock-unknown-$1-$2" ;;
 esac
 EOF
 chmod +x "$MOCKDIR/get-secret.sh"
+
+export PATH="$MOCKDIR:$PATH"
 export SECRETS_HELPER="$MOCKDIR/get-secret.sh"
+export MOCK_CURL_LOG="$MOCKDIR/curl.log"
+
+# Run tests from inside the workspace dir so find_workspace() picks it up.
+cd "$WORKDIR"
 
 # ---- Tests --------------------------------------------------------------
 echo "test-ga.sh"
 
-# Test 1: `ga query` unwraps Composio's {data,successful} envelope to plain JSON
+# Test 1: `ga query` POSTs to googleAds:search with the GAQL in the body
+: > "$MOCK_CURL_LOG"
 out=$("$GA" query "SELECT campaign.id FROM campaign" | jq -c .)
-assert_eq "ga query unwraps envelope" '[{"campaign":{"id":"42"}}]' "$out"
+assert_eq "ga query returns Google Ads response" '{"results":[{"campaign":{"id":"42","name":"Brand"}}]}' "$out"
+
+# Verify the api request used the right URL + body + auth header
+grep -q "URL=https://googleads.googleapis.com/v23/customers/1234567890/googleAds:search" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga query hit /v23/customers/{id}/googleAds:search" \
+  || { echo "  FAIL ga query did not POST to expected URL"; FAIL=$((FAIL + 1)); }
+
+grep -q 'BODY={"query":"SELECT campaign.id FROM campaign"}' "$MOCK_CURL_LOG" \
+  && echo "  PASS ga query sent the GAQL in the JSON body" \
+  || { echo "  FAIL ga query body was wrong"; FAIL=$((FAIL + 1)); }
+
+grep -q "HEADER=Authorization: Bearer mock-access-tok" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga query attached Authorization: Bearer header" \
+  || { echo "  FAIL ga query missing Authorization header"; FAIL=$((FAIL + 1)); }
+
+grep -q "HEADER=developer-token: mock-dev-token" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga query attached developer-token header" \
+  || { echo "  FAIL ga query missing developer-token"; FAIL=$((FAIL + 1)); }
+
+grep -q "HEADER=login-customer-id: 9999999999" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga query attached login-customer-id from workspace.json" \
+  || { echo "  FAIL ga query missing login-customer-id"; FAIL=$((FAIL + 1)); }
 
 # Test 2: `ga query` requires a query argument (exits non-zero with no args)
 if "$GA" query 2>/dev/null; then
@@ -92,9 +139,18 @@ else
   echo "  PASS ga query without args exits non-zero"
 fi
 
-# Test 3: `ga proxy` invokes `composio proxy` with toolkit + dev-token, passes raw response
+# Test 3: `ga proxy` GET /v23/customers:listAccessibleCustomers
+: > "$MOCK_CURL_LOG"
 out=$("$GA" proxy GET /v23/customers:listAccessibleCustomers | jq -c .)
-assert_eq "ga proxy passes through composio proxy output" '{"results":[{"resourceName":"customers/123/campaigns/42"}]}' "$out"
+assert_eq "ga proxy returns Google Ads response" '{"results":[{"campaign":{"id":"42","name":"Brand"}}]}' "$out"
+
+grep -q "URL=https://googleads.googleapis.com/v23/customers:listAccessibleCustomers" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga proxy hit the right URL" \
+  || { echo "  FAIL ga proxy URL was wrong"; FAIL=$((FAIL + 1)); }
+
+grep -q "METHOD=GET" "$MOCK_CURL_LOG" \
+  && echo "  PASS ga proxy used GET" \
+  || { echo "  FAIL ga proxy method was wrong"; FAIL=$((FAIL + 1)); }
 
 # Test 4: unknown subcommand exits non-zero
 if "$GA" wat 2>/dev/null; then
