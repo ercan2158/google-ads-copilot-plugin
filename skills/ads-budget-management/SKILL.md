@@ -31,8 +31,8 @@ operator's tolerance band — assume ±20% if not specified.
 
 ## Proposal shape
 
-`kind: "budget"`, `via: "proxy"`,
-`endpoint: "/v18/customers/<id>/campaignBudgets:mutate"`.
+`kind: "budget"`, `method: "POST"`,
+`endpoint: "/v23/customers/<id>/campaignBudgets:mutate"`.
 
 Each op:
 ```json

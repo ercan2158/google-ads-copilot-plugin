@@ -35,8 +35,8 @@ Descriptions: 90 chars max, 4 candidates per RSA, expanded value prop.
 
 ## Proposal kinds
 
-- `kind: "creative-pause"` — pause specific assets. `via: "proxy"`,
-  endpoint: `/v18/customers/<id>/adGroupAdAssets:mutate`.
+- `kind: "creative-pause"` — pause specific assets. `method: "POST"`,
+  `endpoint: /v23/customers/<id>/adGroupAdAssets:mutate`.
 - `kind: "creative-add"` — add new assets to an existing RSA. Same endpoint,
   `create` operations.
 

@@ -49,8 +49,8 @@ v1, do per-campaign).
 
 ## Draft the proposal
 
-Use `ads-change-execution` proposal format. `kind: "negatives"`, `via:
-"proxy"`, `endpoint: "/v18/customers/<id>/campaignCriteria:mutate"`.
+Use `ads-change-execution` proposal format. `kind: "negatives"`,
+`method: "POST"`, `endpoint: "/v23/customers/<id>/campaignCriteria:mutate"`.
 
 Each operation:
 

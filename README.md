@@ -3,16 +3,25 @@
 Claude Code plugin for AI-driven Google Ads operations. One operator, one or
 many SaaS apps. The AI is the expert; you type slash commands.
 
-## Install
+## One-time setup
 
-```bash
-bin/install
-```
+1. **Create an OAuth 2.0 Desktop client** in Google Cloud Console, in the
+   *same* Cloud project where your Google Ads developer token is approved.
+2. **Write `~/.config/secrets/google-ads/credentials`** (one `KEY=value` per
+   line, chmod 600):
+   ```
+   DEVELOPER_TOKEN=<from Google Ads API Center>
+   CLIENT_ID=<from your OAuth client>
+   CLIENT_SECRET=<same OAuth client>
+   ```
+3. **Run `bin/oauth-bootstrap`** — opens the consent screen, captures the
+   refresh token via a localhost redirect, appends `REFRESH_TOKEN=…` to the
+   secrets file.
+4. **Run `bin/install`** — symlinks the plugin into Claude Code, runs unit
+   tests, and pings `/v23/customers:listAccessibleCustomers` as a live
+   smoke test. On success it prints the customer IDs you can access.
 
-This symlinks the plugin into `~/.claude/plugins/ads-copilot/` and runs a
-one-shot Composio smoke test to verify connectivity.
-
-## First run
+## Daily use
 
 ```bash
 cd ~/dev/personal/<your-app>     # any folder with a workspace.json

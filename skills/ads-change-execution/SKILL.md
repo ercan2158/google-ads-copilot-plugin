@@ -51,9 +51,8 @@ Structure:
   "proposal_id": "<YYYY-MM-DD>-<kind>-<seq>",
   "kind": "<kind>",
   "account_id": "<customer_id from workspace.json>",
-  "via": "composio" | "proxy",
-  "slug": "<COMPOSIO_SLUG>" | null,
-  "endpoint": "<REST endpoint>" | null,
+  "method": "POST",
+  "endpoint": "/v23/customers/<id>/<resource>:mutate",
   "validate_first": true,
   "operations": [
     { ...op-specific fields... }
@@ -73,12 +72,10 @@ Pseudo-code for `/ads-apply <id>`:
 1. Read workspace/proposals/<id>.md, extract last fenced ```json block.
 2. Parse JSON. Verify .account_id == workspace.json .account.customer_id.
    On mismatch: print "REFUSED: proposal account_id mismatch" and stop.
-3. Build a copy of .operations with validate_only:true (or per-slug equivalent).
-   - If .via == "composio":
-       bin/ga proxy POST /v18/customers/<id>/<resource>:mutate '<body with validateOnly:true>'
-     (most googleads endpoints accept validateOnly).
-   - If .via == "proxy" only and the endpoint supports validateOnly: same.
-   - If neither supports validateOnly: skip dry-run, note in chat.
+3. Build a copy of the request body with validateOnly:true. Most Google Ads
+   :mutate endpoints accept it; if the specific endpoint doesn't, skip the
+   dry-run and note in chat.
+   Call: bin/ga proxy <method> <endpoint> '<body-with-validateOnly-true>'
 4. If dry-run errors: print error, leave proposal in place, stop.
 5. Print chat diff: "About to apply <kind>: <summary of operations>. Proceed? (y/n)"
 6. On 'y':

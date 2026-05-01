@@ -5,8 +5,10 @@ description: GAQL cookbook for read queries via bin/ga query. Use whenever you n
 
 # googleads-gaql
 
-Run all reads through `bin/ga query "<GAQL>"`. The output is plain JSON
-(envelope already unwrapped). For mutations use `ads-change-execution`.
+Run all reads through `bin/ga query "<GAQL>"`. Output is the raw Google Ads
+API response — a JSON object with a top-level `results` array on success,
+or a top-level `error` object on failure. For mutations use
+`ads-change-execution`.
 
 ## Last 24h spend + conversions per campaign
 

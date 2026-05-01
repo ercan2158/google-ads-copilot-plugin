@@ -17,20 +17,23 @@ On every invocation:
    levels, halt and ask the user to `cd` into a workspace folder.
 2. Read these fields:
    - `account.customer_id` — the Google Ads customer ID
+   - `account.manager_customer_id` — the MCC ID (`bin/ga` uses it as `login-customer-id`)
    - `account.currency`, `account.timezone` — for human-readable numbers
-   - `composio.user_id`, `composio.googleads_account_alias` — for `bin/ga`
 3. Read every file in `context/`. These are the operator's hand-written
    ICP, budget policy, KPI tree, persona overrides, product positioning.
    They are sacred — you read, you do not silently rewrite.
 
 ## Run reads via `bin/ga`
 
-Never call `composio` or `curl` directly. Use:
+Never call `curl` directly. Use:
 - `bin/ga query "SELECT ... FROM ... WHERE ..."` for GAQL reads
-- `bin/ga proxy <METHOD> <ENDPOINT> [BODY]` for Google Ads REST endpoints
-  Composio doesn't expose as a slug
+  (POSTs to `/v23/customers/<id>/googleAds:search`)
+- `bin/ga proxy <METHOD> <PATH> [BODY]` for any other Google Ads REST endpoint
+  (PATH starts with `/`, e.g. `/v23/customers:listAccessibleCustomers`)
 
-The `googleads-gaql` skill has the query cookbook.
+`bin/ga` handles OAuth token refresh, the `developer-token` header, and the
+`login-customer-id` header automatically. The `googleads-gaql` skill has
+the query cookbook.
 
 ## NEVER mutate directly
 
