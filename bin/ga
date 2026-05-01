@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# bin/ga — single shell wrapper around Composio CLI + Composio proxy_execute
-# for Google Ads. The only file in the plugin that touches `composio` or
-# `curl`. If Composio's CLI shape changes, fix here.
+# bin/ga — single shell wrapper around the `composio` CLI for Google Ads.
+# Two subcommands: query (slug-based read via composio execute) and proxy
+# (curl-like REST call via composio proxy, with the developer-token header
+# attached). The only file in the plugin that touches `composio`. If
+# Composio's CLI shape changes, fix here.
 
 set -euo pipefail
 
 SECRETS_HELPER="${SECRETS_HELPER:-$HOME/.config/secrets/get-secret.sh}"
-COMPOSIO_API_BASE="${COMPOSIO_API_BASE:-https://backend.composio.dev}"
+GOOGLEADS_API_BASE="${GOOGLEADS_API_BASE:-https://googleads.googleapis.com}"
 
 usage() {
   cat <<EOF >&2
@@ -14,22 +16,30 @@ Usage: ga <subcommand> [args]
 
 Subcommands:
   query "<GAQL>"                              Run a read-only GAQL query.
-  proxy <METHOD> <ENDPOINT> [<JSON-BODY>]     Proxy an arbitrary Google Ads
+  proxy <METHOD> <PATH> [<JSON-BODY>]         Proxy an arbitrary Google Ads
                                               REST call (mutations included).
+                                              PATH is the path part only,
+                                              e.g. /v23/customers:listAccessibleCustomers.
 
 Examples:
   ga query "SELECT campaign.id, campaign.name FROM campaign LIMIT 5"
-  ga proxy POST /v18/customers/8191097521/campaignCriteria:mutate '{"operations":[...]}'
+  ga proxy GET /v23/customers:listAccessibleCustomers
+  ga proxy POST /v23/customers/8191097521/campaignCriteria:mutate '{"operations":[...]}'
 EOF
   exit 64
 }
 
 unwrap() {
-  # Composio returns {"data":"<json-string-or-object>","successful":true}.
-  # Unwrap to the inner data on success; emit error on failure.
+  # Composio's `execute` returns {"data":"<json-string-or-object>","successful":true}.
+  # Unwrap to the inner data on success; emit error on failure (handling
+  # both string and object error shapes).
   jq -e '
     if .successful != true then
-      ("composio error: " + (.error // "unknown")) | halt_error(1)
+      ("composio error: " + (
+        if (.error | type) == "object" then (.error | tojson)
+        else (.error // "unknown" | tostring)
+        end
+      )) | halt_error(1)
     elif (.data | type) == "string" then
       .data | fromjson
     else
@@ -47,30 +57,19 @@ cmd_query() {
 }
 
 cmd_proxy() {
-  local method="${1:-}" endpoint="${2:-}" body="${3:-}"
-  [[ -z "$method" || -z "$endpoint" ]] && {
-    echo "ga proxy: need METHOD and ENDPOINT" >&2; exit 64
+  local method="${1:-}" path="${2:-}" body="${3:-}"
+  [[ -z "$method" || -z "$path" ]] && {
+    echo "ga proxy: need METHOD and PATH" >&2; exit 64
   }
-  local dev_token api_key payload
+  local dev_token full_url
   dev_token=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
-  api_key=$("$SECRETS_HELPER" composio COMPOSIO_API_KEY)
-  payload=$(jq -nc \
-    --arg m "$method" \
-    --arg e "$endpoint" \
-    --arg dt "$dev_token" \
-    --argjson b "${body:-null}" \
-    '{
-      toolkit_slug: "googleads",
-      endpoint:     $e,
-      method:       $m,
-      body:         $b,
-      parameters:   [{name:"developer-token", value:$dt, type:"header"}]
-    }')
-  curl -sS -X POST \
-    "$COMPOSIO_API_BASE/api/v3/tool_router/session/default/proxy_execute" \
-    -H "x-api-key: $api_key" \
-    -H "Content-Type: application/json" \
-    -d "$payload" | unwrap
+  full_url="${GOOGLEADS_API_BASE}${path}"
+
+  local args=( proxy "$full_url" --toolkit googleads -X "$method" -H "developer-token: $dev_token" )
+  if [[ -n "$body" && "$body" != "null" ]]; then
+    args+=( -H "content-type: application/json" -d "$body" )
+  fi
+  composio "${args[@]}"
 }
 
 main() {

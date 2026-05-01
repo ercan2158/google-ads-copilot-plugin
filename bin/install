@@ -20,26 +20,39 @@ echo "[install] linked $REPO_DIR -> $TARGET"
 echo "[install] running bin/test-ga.sh"
 "$REPO_DIR/bin/test-ga.sh"
 
-# 3. Live smoke test — verify Composio + Google Ads connectivity
-echo "[install] live smoke test: composio execute GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS"
-out=$(composio execute GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS -d '{}' 2>&1) || {
-  echo "[install] FAILED — composio call errored:"
+# 3. Live smoke test — verify Composio + Google Ads connectivity through the
+#    proxy path (the same path mutations use, with the developer-token header).
+echo "[install] live smoke test: ga proxy GET /v23/customers:listAccessibleCustomers"
+out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
+  echo "[install] FAILED — ga proxy errored:"
   echo "$out"
   echo
   echo "Likely fixes:"
-  echo "  - Run \`composio login\` to authenticate the CLI"
-  echo "  - Verify Composio googleads toolkit is connected"
+  echo "  - Run \`composio login\` if the CLI session has expired"
+  echo "  - Run \`composio link googleads\` to (re)connect the toolkit"
+  echo "  - Verify ~/.config/secrets/google-ads/credentials has DEVELOPER_TOKEN=…"
   exit 1
 }
 
-echo "$out" | jq -e '.successful == true' >/dev/null || {
-  echo "[install] FAILED — Composio returned a non-success envelope:"
+# composio proxy returns Google Ads' raw response — successful response has
+# no top-level `error` field; failures do.
+if echo "$out" | jq -e '.error // empty' >/dev/null 2>&1; then
+  echo "[install] FAILED — Google Ads returned an error:"
   echo "$out" | jq .
+  echo
+  echo "Common causes:"
+  echo "  - DEVELOPER_TOKEN_PROHIBITED — your dev token's Google Cloud project"
+  echo "    must match the OAuth client Composio's googleads connection uses."
+  echo "    Fix: register a custom OAuth config in Composio's googleads toolkit"
+  echo "    settings, using OAuth credentials from the same Cloud project as"
+  echo "    your dev token."
+  echo "  - PERMISSION_DENIED — dev token approval status (Test/Basic/Standard)"
+  echo "    may not allow access to this account."
   exit 1
-}
+fi
 
 echo "[install] OK. Accessible customers:"
-echo "$out" | jq -r '.data | fromjson? // .data'
+echo "$out" | jq .
 
 echo
 echo "[install] Done. Open Claude Code in any folder with a workspace.json"

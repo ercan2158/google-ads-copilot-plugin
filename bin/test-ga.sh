@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/test-ga.sh — bash assertion suite for bin/ga.
-# Mocks `composio` and `curl` via PATH override so we test wiring without
-# hitting Google or Composio.
+# Mocks `composio` via PATH override so we test wiring without hitting any
+# real API.
 
 set -euo pipefail
 
@@ -27,37 +27,55 @@ trap 'rm -rf "$MOCKDIR"' EXIT
 
 cat > "$MOCKDIR/composio" <<'EOF'
 #!/usr/bin/env bash
-# Mock composio: returns a canned envelope based on first arg.
-if [[ "${1:-}" == "execute" && "${2:-}" == "GOOGLEADS_QUERY" ]]; then
-  echo '{"data":"[{\"campaign\":{\"id\":\"42\"}}]","successful":true}'
-  exit 0
-fi
+# Mock composio: handles `execute GOOGLEADS_QUERY` and `proxy <url> ...`.
+case "${1:-}" in
+  execute)
+    if [[ "${2:-}" == "GOOGLEADS_QUERY" ]]; then
+      echo '{"data":"[{\"campaign\":{\"id\":\"42\"}}]","successful":true}'
+      exit 0
+    fi
+    ;;
+  proxy)
+    # Sanity-check: second arg is a googleads URL, --toolkit googleads is
+    # present, developer-token header is supplied.
+    url="${2:-}"
+    if [[ "$url" != *"googleads.googleapis.com"* ]]; then
+      echo '{"error":"mock proxy: bad url"}' >&2
+      exit 1
+    fi
+    saw_toolkit=0; saw_dev_token=0
+    shift 2
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --toolkit) [[ "${2:-}" == "googleads" ]] && saw_toolkit=1; shift 2 ;;
+        -H)        [[ "${2:-}" == developer-token:* ]] && saw_dev_token=1; shift 2 ;;
+        *)         shift ;;
+      esac
+    done
+    if [[ $saw_toolkit -eq 0 || $saw_dev_token -eq 0 ]]; then
+      echo "{\"error\":\"mock proxy: missing toolkit ($saw_toolkit) or dev-token ($saw_dev_token)\"}" >&2
+      exit 1
+    fi
+    echo '{"results":[{"resourceName":"customers/123/campaigns/42"}]}'
+    exit 0
+    ;;
+esac
 echo '{"data":null,"successful":false,"error":"unknown mock command"}' >&2
 exit 1
 EOF
-
-cat > "$MOCKDIR/curl" <<'EOF'
-#!/usr/bin/env bash
-# Mock curl: echo a canned proxy_execute success body.
-echo '{"data":"{\"results\":[{\"resourceName\":\"customers/123/campaigns/42\"}]}","successful":true}'
-EOF
-
-chmod +x "$MOCKDIR/composio" "$MOCKDIR/curl"
+chmod +x "$MOCKDIR/composio"
 export PATH="$MOCKDIR:$PATH"
 
-# Mock get-secret.sh too, since ga proxy reads dev_token + api_key
-mkdir -p "$MOCKDIR/secrets"
-cat > "$MOCKDIR/secrets/get-secret.sh" <<'EOF'
+# Mock get-secret.sh — ga proxy reads the dev token through it.
+cat > "$MOCKDIR/get-secret.sh" <<'EOF'
 #!/usr/bin/env bash
-# Mock secrets helper. ga proxy calls: get-secret.sh google-ads DEVELOPER_TOKEN
 case "$1:$2" in
   google-ads:DEVELOPER_TOKEN) echo "mock-dev-token-12345" ;;
-  composio:COMPOSIO_API_KEY)  echo "mock-api-key-67890" ;;
   *) echo "mock-unknown-$1-$2" ;;
 esac
 EOF
-chmod +x "$MOCKDIR/secrets/get-secret.sh"
-export SECRETS_HELPER="$MOCKDIR/secrets/get-secret.sh"
+chmod +x "$MOCKDIR/get-secret.sh"
+export SECRETS_HELPER="$MOCKDIR/get-secret.sh"
 
 # ---- Tests --------------------------------------------------------------
 echo "test-ga.sh"
@@ -74,9 +92,9 @@ else
   echo "  PASS ga query without args exits non-zero"
 fi
 
-# Test 3: `ga proxy` accepts METHOD ENDPOINT BODY and returns unwrapped data
-out=$("$GA" proxy POST /v18/customers/123/campaigns:mutate '{"operations":[]}' | jq -c .)
-assert_eq "ga proxy unwraps envelope" '{"results":[{"resourceName":"customers/123/campaigns/42"}]}' "$out"
+# Test 3: `ga proxy` invokes `composio proxy` with toolkit + dev-token, passes raw response
+out=$("$GA" proxy GET /v23/customers:listAccessibleCustomers | jq -c .)
+assert_eq "ga proxy passes through composio proxy output" '{"results":[{"resourceName":"customers/123/campaigns/42"}]}' "$out"
 
 # Test 4: unknown subcommand exits non-zero
 if "$GA" wat 2>/dev/null; then
