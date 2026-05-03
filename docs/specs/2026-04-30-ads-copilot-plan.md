@@ -103,7 +103,7 @@ Create `~/dev/personal/ads-copilot/.claude-plugin/plugin.json`:
   "description": "AI-driven Google Ads operator for non-technical SaaS founders. Slash commands that read the account, propose mutations as files, and apply them only on explicit /ads-apply.",
   "author": {
     "name": "Ercan",
-    "email": "ercan.kurtarangil@reev.com"
+    "email": "kuercan@proton.me"
   },
   "agents": ["./agents"],
   "skills": ["./skills"],
