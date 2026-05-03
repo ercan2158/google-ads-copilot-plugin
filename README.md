@@ -93,6 +93,9 @@ CI-style use.
 | `/google-ads-copilot:creative` | Ad-hoc RSA asset health check |
 | `/google-ads-copilot:search-terms` | Mine 30 days of search terms for negative-keyword candidates |
 | `/google-ads-copilot:explain <term>` | Plain-English explainer for any Google Ads concept |
+| `/google-ads-copilot:recommendations` | Pull Google's pending recommendations, score against your context, draft proposals for the ones worth applying |
+| `/google-ads-copilot:changes [days]` | Show the audit trail — what's been applied recently (default 7 days) |
+| `/google-ads-copilot:undo <proposal-id>` | Generate the inverse of an applied proposal as a new proposal (rollback) |
 | `/google-ads-copilot:apply <proposal-id>` | **The only mutating command.** Applies a drafted proposal |
 
 ### Architecture: skills loaded per command
@@ -109,6 +112,9 @@ Every command runs as the **`manager`** agent and declares which skills the agen
 | `/google-ads-copilot:creative` | `gaql`, `creative-management`, `change-execution`, `explain-to-beginner` |
 | `/google-ads-copilot:search-terms` | `gaql`, `search-term-mining`, `change-execution`, `explain-to-beginner` |
 | `/google-ads-copilot:explain` | `explain-to-beginner` |
+| `/google-ads-copilot:recommendations` | `gaql`, `change-execution`, `creative-management`, `search-term-mining`, `budget-management`, `explain-to-beginner` |
+| `/google-ads-copilot:changes` | `explain-to-beginner` |
+| `/google-ads-copilot:undo` | `change-execution` (incl. `references/apply-contract.md` for inverse-op rules) |
 | `/google-ads-copilot:apply` | `change-execution` (incl. `references/apply-contract.md`) |
 
 ## Safety model

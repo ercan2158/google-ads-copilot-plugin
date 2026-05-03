@@ -118,6 +118,34 @@ FROM conversion_action
 WHERE conversion_action.status != 'REMOVED'
 ```
 
+## Pending Google recommendations
+
+```sql
+SELECT
+  recommendation.resource_name,
+  recommendation.type,
+  recommendation.dismissed,
+  recommendation.campaign,
+  recommendation.impact.base_metrics.cost_micros,
+  recommendation.impact.base_metrics.conversions,
+  recommendation.impact.potential_metrics.cost_micros,
+  recommendation.impact.potential_metrics.conversions
+FROM recommendation
+WHERE recommendation.dismissed = FALSE
+```
+
+`recommendation.type` enumerates what Google is suggesting (e.g.
+`SITELINK_ASSET`, `CALLOUT_ASSET`, `KEYWORD`, `CAMPAIGN_BUDGET`,
+`TARGET_CPA_OPT_IN`, `SEARCH_PARTNERS_OPT_IN`,
+`PERFORMANCE_MAX_OPT_IN`, `MAXIMIZE_CONVERSIONS_OPT_IN`,
+`OPTIMIZE_TEXT_AD_AND_RSAS`, `KEYWORD_MATCH_TYPE`, `CUSTOMER_MATCH`).
+The `/google-ads-copilot:recommendations` command maps each type to a
+plugin mutation kind.
+
+`recommendation.impact.potential_metrics.cost_micros` minus
+`recommendation.impact.base_metrics.cost_micros` is the projected € lift
+(in micros). Divide by `1_000_000`.
+
 ## How to call from the agent
 
 ```
