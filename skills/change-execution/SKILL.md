@@ -101,7 +101,7 @@ The fenced ```json block at the bottom is the **executable** part.
 | `ad-toggle` | `/creative`, `/monthly` | POST `adGroupAds:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | when an individual ad consistently underperforms |
 | `bid-adjust` | `/weekly`, `/monthly` | POST `campaignCriteria:mutate` | `create` or `update` `bidModifier` for device/geo/schedule criteria | [`examples/bid-adjust.md`](examples/bid-adjust.md) |
 | `conversion-action-mod` | (operator request) | POST `conversionActions:mutate` | `create` or `update` conversion action | `account-audit` Section 2 — careful, foundational |
-| `customer-match-upload` | `/recommendations` | multi-step (`userLists:mutate` → `offlineUserDataJobs:create` → `:addOperations` → `:run`) | hashed PII upload | [`examples/customer-match.md`](examples/customer-match.md) |
+| `customer-match-upload` | `/recommendations`, (operator request) | multi-step (`userLists:mutate` → `offlineUserDataJobs:create` → `:addOperations` → `:run`) | hashed PII upload, 4 paired proposals | [`examples/customer-match.md`](examples/customer-match.md) — **non-invertible** |
 | `recommendation-apply` | `/recommendations` | POST `recommendations:apply` | `applyParameters` per rec type | [`examples/recommendation-apply.md`](examples/recommendation-apply.md) — **no validate_only** |
 | `recommendation-dismiss` | `/recommendations` | POST `recommendations:dismiss` | just the `resourceName` | when a rec doesn't fit and operator wants to clear noise |
 
