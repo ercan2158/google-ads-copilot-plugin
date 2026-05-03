@@ -17,9 +17,11 @@ many SaaS apps. The AI is the expert; you type slash commands.
 3. **Run `bin/oauth-bootstrap`** — opens the consent screen, captures the
    refresh token via a localhost listener on port 8765, appends
    `REFRESH_TOKEN=…` to the secrets file.
-4. **Run `bin/install`** — runs unit tests, registers the plugin with Claude
-   Code as a local marketplace, installs it, and pings
-   `/v23/customers:listAccessibleCustomers` as a live smoke test.
+4. **Run `bin/install`** — runs unit tests, symlinks `ads-ga` into
+   `~/.local/bin/`, registers the plugin with Claude Code as a local
+   marketplace, installs it, and pings
+   `/v23/customers:listAccessibleCustomers` as a live smoke test. Make
+   sure `~/.local/bin` is on your `$PATH` (the script warns if not).
 5. **Restart Claude Code.**
 
 ## Daily use

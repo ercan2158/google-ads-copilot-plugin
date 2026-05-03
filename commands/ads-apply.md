@@ -27,10 +27,10 @@ verbatim. Specifically:
 
 1. Read `workspace/proposals/$1.md`. Extract the last fenced ```json block.
 2. Account-ID pin: refuse on mismatch with `workspace.json`.
-3. Run validate_only dry-run via `bin/ga proxy`. On error: print error, stop.
+3. Run validate_only dry-run via `ads-ga proxy`. On error: print error, stop.
 4. Print diff in chat (operation summary). Ask "Proceed? (y/n)".
 5. On 'y':
-   - Live run via `bin/ga proxy`.
+   - Live run via `ads-ga proxy`.
    - For each op, append a JSON line to `workspace/change-log/$(date +%Y-%m-%d).jsonl`.
    - `mv` proposal to `workspace/proposals/applied/`.
    - Print "Applied. N operations live."

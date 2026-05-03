@@ -1,11 +1,11 @@
 ---
 name: googleads-gaql
-description: GAQL cookbook for read queries via bin/ga query. Use whenever you need to read account data — campaign performance, search terms, conversion paths, ad assets, account-level diagnostics.
+description: GAQL cookbook for read queries via ads-ga query. Use whenever you need to read account data — campaign performance, search terms, conversion paths, ad assets, account-level diagnostics.
 ---
 
 # googleads-gaql
 
-Run all reads through `bin/ga query "<GAQL>"`. Output is the raw Google Ads
+Run all reads through `ads-ga query "<GAQL>"`. Output is the raw Google Ads
 API response — a JSON object with a top-level `results` array on success,
 or a top-level `error` object on failure. For mutations use
 `ads-change-execution`.
@@ -116,7 +116,7 @@ WHERE conversion_action.status != 'REMOVED'
 ## How to call from the agent
 
 ```
-bin/ga query "SELECT campaign.id, campaign.name FROM campaign WHERE campaign.status = 'ENABLED'"
+ads-ga query "SELECT campaign.id, campaign.name FROM campaign WHERE campaign.status = 'ENABLED'"
 ```
 
 Returns a JSON array. Parse with `jq` or in-context.
