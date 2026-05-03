@@ -32,10 +32,13 @@ logged.
 
 ```bash
 # 1. Install the plugin
-claude plugin marketplace add /path/to/ads-copilot
+claude plugin marketplace add https://github.com/ercan2158/google-ads-copilot-plugin
 claude plugin install ads-copilot@ads-copilot
 
 # 2. Per-machine setup (once)
+#    Clone the repo first if you want to run setup directly:
+git clone https://github.com/ercan2158/google-ads-copilot-plugin
+cd google-ads-copilot-plugin
 bin/setup
 #    → checks prereqs, walks through OAuth, runs a live smoke test
 

@@ -2,11 +2,14 @@
   "name": "ads-copilot",
   "owner": {
     "name": "Ercan",
-    "email": "kuercan@proton.me"
+    "email": "kuercan@proton.me",
+    "url": "https://github.com/ercan2158"
   },
   "metadata": {
     "description": "AI-driven Google Ads operator for non-technical SaaS founders",
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin",
+    "repository": "https://github.com/ercan2158/google-ads-copilot-plugin"
   },
   "plugins": [
     {
@@ -14,7 +17,8 @@
       "source": "./",
       "description": "Slash commands (/ads-daily, /ads-weekly, /ads-monthly, /ads-search-terms, /ads-budgets, /ads-creative, /ads-bootstrap, /ads-explain, /ads-apply) backed by an ads-manager agent and 7 skills. /ads-apply is the only command that mutates the account.",
       "category": "advertising",
-      "tags": ["google-ads", "advertising", "operations", "saas"]
+      "tags": ["google-ads", "advertising", "operations", "saas"],
+      "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin"
     }
   ]
 }
