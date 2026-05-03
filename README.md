@@ -1,4 +1,4 @@
-# ads-copilot
+# google-ads-copilot
 
 A Claude Code plugin that turns Claude into your Google Ads operator. You
 run plain-English slash commands; the agent reads your account, drafts
@@ -33,7 +33,7 @@ logged.
 ```bash
 # 1. Install the plugin
 claude plugin marketplace add https://github.com/ercan2158/google-ads-copilot-plugin
-claude plugin install ads-copilot@ads-copilot
+claude plugin install google-ads-copilot@google-ads-copilot
 
 # 2. Per-machine setup (once)
 #    Clone the repo first if you want to run setup directly:
@@ -75,9 +75,9 @@ your-saas-app/
     └── refactors/          # bootstrap-time phased refactor plans
 ```
 
-Secrets live separately at `~/.config/ads-copilot/credentials` (chmod 600)
+Secrets live separately at `~/.config/google-ads-copilot/credentials` (chmod 600)
 — never in any project repo, never in the plugin. Override the location
-with `ADS_COPILOT_CREDENTIALS_FILE`, or set individual fields via env
+with `GOOGLE_ADS_COPILOT_CREDENTIALS_FILE`, or set individual fields via env
 vars (`GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, etc.) for
 CI-style use.
 

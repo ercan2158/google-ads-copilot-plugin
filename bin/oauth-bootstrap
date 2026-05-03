@@ -5,14 +5,15 @@
 #   - You have created an OAuth 2.0 Desktop client in Google Cloud Console
 #     (in the SAME Cloud project as your Google Ads developer token).
 #   - You have written CLIENT_ID and CLIENT_SECRET to
-#     ~/.config/secrets/google-ads/credentials (one per line, KEY=value).
+#     ~/.config/google-ads-copilot/credentials (one per line, KEY=value),
+#     or set GOOGLE_ADS_COPILOT_CREDENTIALS_FILE to override the path.
 #   - DEVELOPER_TOKEN is also in that file (you set this up earlier).
 #
 # Effect: appends/updates REFRESH_TOKEN= in the same secrets file.
 
 set -euo pipefail
 
-SECRETS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
+SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
 SCOPE="https://www.googleapis.com/auth/adwords"
 PORT="${OAUTH_PORT:-8765}"
 

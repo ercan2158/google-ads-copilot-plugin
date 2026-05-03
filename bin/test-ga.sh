@@ -93,10 +93,10 @@ EOF
 chmod 600 "$MOCKDIR/credentials"
 
 export PATH="$MOCKDIR:$PATH"
-export ADS_COPILOT_CREDENTIALS_FILE="$MOCKDIR/credentials"
+export GOOGLE_ADS_COPILOT_CREDENTIALS_FILE="$MOCKDIR/credentials"
 export MOCK_CURL_LOG="$MOCKDIR/curl.log"
 # Scope token cache to MOCKDIR so tests don't write to the real $HOME.
-export ADS_COPILOT_TOKEN_CACHE="$MOCKDIR/token-cache"
+export GOOGLE_ADS_COPILOT_TOKEN_CACHE="$MOCKDIR/token-cache"
 
 # Run tests from inside the workspace dir so find_workspace() picks it up.
 cd "$WORKDIR"

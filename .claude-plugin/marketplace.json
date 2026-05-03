@@ -1,5 +1,5 @@
 {
-  "name": "ads-copilot",
+  "name": "google-ads-copilot",
   "owner": {
     "name": "Ercan",
     "email": "kuercan@proton.me",
@@ -13,7 +13,7 @@
   },
   "plugins": [
     {
-      "name": "ads-copilot",
+      "name": "google-ads-copilot",
       "source": "./",
       "description": "Slash commands (/ads-daily, /ads-weekly, /ads-monthly, /ads-search-terms, /ads-budgets, /ads-creative, /ads-bootstrap, /ads-explain, /ads-apply) backed by an ads-manager agent and 7 skills. /ads-apply is the only command that mutates the account.",
       "category": "advertising",

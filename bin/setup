@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# bin/setup — one-time per-machine setup for ads-copilot.
+# bin/setup — one-time per-machine setup for google-ads-copilot.
 # Verifies prereqs, walks through OAuth, runs a live smoke test against
 # Google Ads. Idempotent — safe to re-run.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SECRETS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
+SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
 
 step() { printf '\n[setup] %s\n' "$*"; }
 fail() { printf '[setup] FAILED — %s\n' "$*" >&2; exit 1; }

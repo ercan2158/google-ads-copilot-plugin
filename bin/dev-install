@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SECRETS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
+SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
 
 step() { printf '\n[install] %s\n' "$*"; }
 fail() { printf '[install] FAILED — %s\n' "$*" >&2; exit 1; }
@@ -59,7 +59,7 @@ if ! command -v claude >/dev/null; then
   fail "\`claude\` CLI not on PATH. Install Claude Code first."
 fi
 claude plugin marketplace add "$REPO_DIR" 2>&1 | tail -1
-claude plugin install ads-copilot@ads-copilot 2>&1 | tail -1
+claude plugin install google-ads-copilot@google-ads-copilot 2>&1 | tail -1
 
 # 4. Live smoke test ----------------------------------------------------------
 step "live smoke test: bin/ga proxy GET /v23/customers:listAccessibleCustomers"

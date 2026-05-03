@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bin/ga — direct Google Ads REST API wrapper for the ads-copilot plugin.
+# bin/ga — direct Google Ads REST API wrapper for the google-ads-copilot plugin.
 # Two subcommands: query (GAQL search) and proxy (arbitrary REST). All calls
 # attach a fresh OAuth access token (refreshed from the stored refresh_token
 # every invocation), the developer token, and the login-customer-id.
@@ -9,11 +9,11 @@
 
 set -euo pipefail
 
-CREDENTIALS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
+CREDENTIALS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
 GOOGLEADS_API_BASE="${GOOGLEADS_API_BASE:-https://googleads.googleapis.com}"
 GOOGLEADS_API_VERSION="${GOOGLEADS_API_VERSION:-v23}"
 OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}"
-TOKEN_CACHE="${ADS_COPILOT_TOKEN_CACHE:-$HOME/.cache/ads-copilot/access-token}"
+TOKEN_CACHE="${GOOGLE_ADS_COPILOT_TOKEN_CACHE:-$HOME/.cache/google-ads-copilot/access-token}"
 
 # read_secret <KEY> — read a credential from the env or the credentials file.
 # Env vars are checked first (GOOGLE_ADS_<KEY>), then the file at
@@ -31,7 +31,7 @@ read_secret() {
     {
       echo "ga: credentials file not found at $CREDENTIALS_FILE"
       echo "    Run \`bin/setup\` to create it, or set ${env_name} as an env var,"
-      echo "    or override the path with ADS_COPILOT_CREDENTIALS_FILE."
+      echo "    or override the path with GOOGLE_ADS_COPILOT_CREDENTIALS_FILE."
     } >&2
     exit 1
   fi
