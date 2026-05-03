@@ -1,56 +1,139 @@
 # ads-copilot
 
-Claude Code plugin for AI-driven Google Ads operations. One operator, one or
-many SaaS apps. The AI is the expert; you type slash commands.
+A Claude Code plugin that turns Claude into your Google Ads operator. You
+run plain-English slash commands; the agent reads your account, drafts
+changes as proposal files you can review, and only ever mutates the account
+when you explicitly approve a proposal.
 
-## One-time setup
+Built for **non-technical SaaS founders** who don't want to hire an agency
+but also don't want to learn Google Ads from scratch. The plugin keeps your
+account safe: read-only by default, account-ID pinned, every applied change
+logged.
 
-1. **Create an OAuth 2.0 Desktop client** in Google Cloud Console, in the
-   *same* Cloud project where your Google Ads developer token is approved.
-   Add yourself as a **test user** under the OAuth consent screen.
-2. **Write `~/.config/secrets/google-ads/credentials`** (chmod 600), with:
-   ```
-   DEVELOPER_TOKEN=<from Google Ads API Center>
-   CLIENT_ID=<from your OAuth client>
-   CLIENT_SECRET=<same OAuth client>
-   ```
-3. **Run `bin/oauth-bootstrap`** — opens the consent screen, captures the
-   refresh token via a localhost listener on port 8765, appends
-   `REFRESH_TOKEN=…` to the secrets file.
-4. **Run `bin/install`** — runs unit tests, symlinks `ads-ga` into
-   `~/.local/bin/`, registers the plugin with Claude Code as a local
-   marketplace, installs it, and pings
-   `/v23/customers:listAccessibleCustomers` as a live smoke test. Make
-   sure `~/.local/bin` is on your `$PATH` (the script warns if not).
-5. **Restart Claude Code.**
+## What you'll need
+
+- **Google Ads developer token** — request at the
+  [Google Ads API Center](https://ads.google.com/aw/apicenter). **Approval
+  can take days.** Start this first.
+- **Google Cloud project** with the Google Ads API enabled, in the same
+  Cloud project as the developer token.
+- **OAuth 2.0 Desktop client** in that Cloud project. Add yourself as a
+  **test user** under the OAuth consent screen.
+- **CLI tools:** `jq`, `python3`, `curl`, `claude` (Claude Code).
+
+> ⚠️ **Token-expiry warning.** If your OAuth consent screen is in **Testing**
+> mode (the default for unverified clients with restricted scopes like
+> `adwords`), refresh tokens expire **every 7 days**. When that happens,
+> just re-run `bin/oauth-bootstrap`. To remove this constraint long-term,
+> submit the OAuth client for Google's verification (separate multi-week
+> process).
+
+## Quickstart
+
+```bash
+# 1. Install the plugin
+claude plugin marketplace add /path/to/ads-copilot
+claude plugin install ads-copilot@ads-copilot
+
+# 2. Per-machine setup (once)
+bin/setup
+#    → checks prereqs, walks through OAuth, runs a live smoke test
+
+# 3. Per-project bootstrap (once per SaaS app)
+cd ~/dev/personal/<your-saas-app>
+claude
+> /ads-bootstrap
+#    → first run scaffolds workspace.json + context/ stubs interactively,
+#      then runs a deep audit
+```
+
+After that, daily/weekly/monthly use just works — no more config.
+
+## Workspace structure
+
+The plugin keeps **all per-account state in your project repo**, not in the
+plugin. After `/ads-bootstrap`, your SaaS project has:
+
+```
+your-saas-app/
+├── workspace.json          # account binding (customer_id, currency, tz)
+├── context/                # human-curated docs the agent reads every run
+│   ├── icp.md              # ideal customer profile
+│   ├── product-positioning.md
+│   ├── budget-policy.md
+│   ├── kpi-tree.md
+│   └── persona-overrides.md
+└── workspace/
+    ├── proposals/          # drafted mutations (review before applying)
+    │   └── applied/        # proposals that have been /ads-apply'd
+    ├── change-log/         # append-only JSONL of every applied mutation
+    ├── digests/            # daily TL;DR files (only on anomaly)
+    ├── audit/              # weekly/monthly/bootstrap audit reports
+    └── refactors/          # bootstrap-time phased refactor plans
+```
+
+Secrets live separately at `~/.config/secrets/google-ads/credentials` —
+never in any project repo, never in the plugin.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/ads-bootstrap` | First-run scaffold + deep audit (per project) |
+| `/ads-daily` | Anything-on-fire check; only writes a digest on anomaly |
+| `/ads-weekly` | Spend, search-terms, creative, disapprovals; may draft 0–2 proposals |
+| `/ads-monthly` | Full 8-section audit; may draft up to 3 proposals |
+| `/ads-budgets` | Ad-hoc budget pacing review |
+| `/ads-creative` | Ad-hoc RSA asset health check |
+| `/ads-search-terms` | Mine 30 days of search terms for negative-keyword candidates |
+| `/ads-explain <term>` | Plain-English explainer for any Google Ads concept |
+| `/ads-apply <proposal-id>` | **The only mutating command.** Applies a drafted proposal |
+
+## Safety model
+
+Five gates between any read-only command and a live mutation:
+
+1. **One mutating command.** Only `/ads-apply` ever calls a Google Ads
+   `:mutate` endpoint.
+2. **Always-propose.** Every potential change is drafted as a `.md` file
+   you read before approving.
+3. **Account-ID pin.** `/ads-apply` refuses if the proposal's `account_id`
+   doesn't match your `workspace.json`.
+4. **`validate_only` dry-run.** Every apply runs `validateOnly:true` first;
+   only proceeds if Google accepts the dry-run.
+5. **Append-only change-log.** Every applied operation = one JSON line in
+   `workspace/change-log/<date>.jsonl`. Easy to audit, never overwrites.
 
 ## Daily use
 
 ```bash
-cd ~/dev/personal/<your-app>     # any folder with a workspace.json
+cd ~/dev/personal/<your-saas-app>     # any folder with a workspace.json
 claude
 > /ads-daily
 ```
 
 The plugin walks up from cwd, finds `workspace.json`, and binds to that
-account for the session.
+account for the session. Run any command from anywhere inside the project.
 
-## Commands
+## Troubleshooting
 
-`/ads-daily`, `/ads-weekly`, `/ads-monthly`, `/ads-search-terms`,
-`/ads-budgets`, `/ads-creative`, `/ads-bootstrap`, `/ads-explain`,
-`/ads-apply <proposal-id>`. See `commands/` for what each does.
+- **`OAuth refresh error` from `bin/setup` or any command.** Refresh token
+  expired (7-day rule for unverified Testing-mode clients). Re-run
+  `bin/oauth-bootstrap`.
+- **`DEVELOPER_TOKEN_PROHIBITED`.** Your developer token's Cloud project
+  must match your OAuth client's Cloud project.
+- **`PERMISSION_DENIED` from Google Ads.** Likely a developer-token approval
+  level (Test/Basic/Standard) gap for the operations you're trying.
+- **`workspace.json not found`.** You're outside any project workspace.
+  Either `cd` into one, or run `/ads-bootstrap` to scaffold one in the
+  current directory.
 
-## Safety
+## License
 
-`/ads-apply` is the only command that mutates the account. Everything else
-is read-only or writes a proposal file you review before shipping.
+MIT — see [LICENSE](LICENSE).
 
-## Token expiry note
+## Architecture
 
-If your OAuth consent screen is in **Testing** mode (the default for
-unverified clients with restricted scopes like `adwords`), the refresh
-token expires every 7 days. When `bin/install` reports an OAuth refresh
-error, just re-run `bin/oauth-bootstrap`. To remove this constraint long
-term, submit the OAuth client for Google's verification — separate
-multi-week process.
+For the original design rationale and the safety-model reasoning, see
+[`docs/adr/`](docs/adr/). Those are historical decision records, not
+current usage docs.
