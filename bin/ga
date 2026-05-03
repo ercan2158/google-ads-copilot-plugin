@@ -9,11 +9,40 @@
 
 set -euo pipefail
 
-SECRETS_HELPER="${SECRETS_HELPER:-$HOME/.config/secrets/get-secret.sh}"
+CREDENTIALS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
 GOOGLEADS_API_BASE="${GOOGLEADS_API_BASE:-https://googleads.googleapis.com}"
 GOOGLEADS_API_VERSION="${GOOGLEADS_API_VERSION:-v23}"
 OAUTH_TOKEN_URL="${OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}"
 TOKEN_CACHE="${ADS_COPILOT_TOKEN_CACHE:-$HOME/.cache/ads-copilot/access-token}"
+
+# read_secret <KEY> — read a credential from the env or the credentials file.
+# Env vars are checked first (GOOGLE_ADS_<KEY>), then the file at
+# $CREDENTIALS_FILE in KEY=value format. Exits non-zero with a helpful
+# message if neither is set.
+read_secret() {
+  local key="$1"
+  local env_name="GOOGLE_ADS_${key}"
+  local env_val="${!env_name:-}"
+  if [[ -n "$env_val" ]]; then
+    echo "$env_val"
+    return 0
+  fi
+  if [[ ! -f "$CREDENTIALS_FILE" ]]; then
+    {
+      echo "ga: credentials file not found at $CREDENTIALS_FILE"
+      echo "    Run \`bin/setup\` to create it, or set ${env_name} as an env var,"
+      echo "    or override the path with ADS_COPILOT_CREDENTIALS_FILE."
+    } >&2
+    exit 1
+  fi
+  local value
+  value=$(grep "^${key}=" "$CREDENTIALS_FILE" | head -1 | cut -d= -f2-)
+  if [[ -z "$value" ]]; then
+    echo "ga: ${key} missing from $CREDENTIALS_FILE (or set ${env_name} env var)" >&2
+    exit 1
+  fi
+  echo "$value"
+}
 
 usage() {
   cat <<EOF >&2
@@ -68,9 +97,9 @@ get_access_token() {
   fi
 
   # Cache miss or expired — refresh.
-  client_id=$("$SECRETS_HELPER" google-ads CLIENT_ID)
-  client_secret=$("$SECRETS_HELPER" google-ads CLIENT_SECRET)
-  refresh_token=$("$SECRETS_HELPER" google-ads REFRESH_TOKEN)
+  client_id=$(read_secret CLIENT_ID)
+  client_secret=$(read_secret CLIENT_SECRET)
+  refresh_token=$(read_secret REFRESH_TOKEN)
 
   resp=$(curl -sS -X POST "$OAUTH_TOKEN_URL" \
     --data-urlencode "client_id=$client_id" \
@@ -86,7 +115,7 @@ get_access_token() {
       echo "Response from $OAUTH_TOKEN_URL:"
       echo "$resp" | jq . 2>/dev/null || echo "$resp"
       echo
-      echo "Most likely cause: the refresh_token in ~/.config/secrets/google-ads/credentials"
+      echo "Most likely cause: the refresh_token in $CREDENTIALS_FILE"
       echo "was revoked or never set. Re-run \`bin/oauth-bootstrap\` to refresh it."
     } >&2
     exit 1
@@ -136,7 +165,7 @@ load_context() {
     echo "ga: invalid manager_customer_id (must be numeric): $_GA_MGR_ID" >&2
     exit 1
   fi
-  _GA_DEV_TOKEN=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
+  _GA_DEV_TOKEN=$(read_secret DEVELOPER_TOKEN)
   _GA_ACCESS_TOKEN=$(get_access_token)
 }
 

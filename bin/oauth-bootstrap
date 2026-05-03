@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
+SECRETS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
 SCOPE="https://www.googleapis.com/auth/adwords"
 PORT="${OAUTH_PORT:-8765}"
 

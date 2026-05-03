@@ -82,21 +82,18 @@ esac
 EOF
 chmod +x "$MOCKDIR/curl"
 
-# Mock secrets helper
-cat > "$MOCKDIR/get-secret.sh" <<'EOF'
-#!/usr/bin/env bash
-case "$1:$2" in
-  google-ads:CLIENT_ID)        echo "mock-client-id" ;;
-  google-ads:CLIENT_SECRET)    echo "mock-client-secret" ;;
-  google-ads:REFRESH_TOKEN)    echo "mock-refresh-token" ;;
-  google-ads:DEVELOPER_TOKEN)  echo "mock-dev-token" ;;
-  *) echo "mock-unknown-$1-$2" ;;
-esac
+# Mock credentials file (replaces the old SECRETS_HELPER mock — bin/ga now
+# reads the file directly via its inline read_secret() function).
+cat > "$MOCKDIR/credentials" <<EOF
+DEVELOPER_TOKEN=mock-dev-token
+CLIENT_ID=mock-client-id
+CLIENT_SECRET=mock-client-secret
+REFRESH_TOKEN=mock-refresh-token
 EOF
-chmod +x "$MOCKDIR/get-secret.sh"
+chmod 600 "$MOCKDIR/credentials"
 
 export PATH="$MOCKDIR:$PATH"
-export SECRETS_HELPER="$MOCKDIR/get-secret.sh"
+export ADS_COPILOT_CREDENTIALS_FILE="$MOCKDIR/credentials"
 export MOCK_CURL_LOG="$MOCKDIR/curl.log"
 # Scope token cache to MOCKDIR so tests don't write to the real $HOME.
 export ADS_COPILOT_TOKEN_CACHE="$MOCKDIR/token-cache"

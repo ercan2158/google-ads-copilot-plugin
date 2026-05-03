@@ -72,8 +72,11 @@ your-saas-app/
     └── refactors/          # bootstrap-time phased refactor plans
 ```
 
-Secrets live separately at `~/.config/secrets/google-ads/credentials` —
-never in any project repo, never in the plugin.
+Secrets live separately at `~/.config/ads-copilot/credentials` (chmod 600)
+— never in any project repo, never in the plugin. Override the location
+with `ADS_COPILOT_CREDENTIALS_FILE`, or set individual fields via env
+vars (`GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, etc.) for
+CI-style use.
 
 ## Commands
 

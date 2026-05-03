@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
+SECRETS_FILE="${ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/ads-copilot/credentials}"
 
 step() { printf '\n[install] %s\n' "$*"; }
 fail() { printf '[install] FAILED — %s\n' "$*" >&2; exit 1; }
