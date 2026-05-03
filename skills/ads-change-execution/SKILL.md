@@ -7,7 +7,7 @@ description: Proposal protocol. Loaded any time the agent considers a mutation. 
 
 Mutations never go straight to the account. The agent drafts a proposal
 file; the operator runs `/ads-apply <id>`; and only `/ads-apply` calls
-`ads-ga proxy` against the account.
+the ga helper against the account.
 
 ## The five gates
 
@@ -75,7 +75,7 @@ Pseudo-code for `/ads-apply <id>`:
 3. Build a copy of the request body with validateOnly:true. Most Google Ads
    :mutate endpoints accept it; if the specific endpoint doesn't, skip the
    dry-run and note in chat.
-   Call: ads-ga proxy <method> <endpoint> '<body-with-validateOnly-true>'
+   Call: "${CLAUDE_PLUGIN_ROOT}/bin/ga" proxy <method> <endpoint> '<body-with-validateOnly-true>'
 4. If dry-run errors: print error, leave proposal in place, stop.
 5. Print chat diff: "About to apply <kind>: <summary of operations>. Proceed? (y/n)"
 6. On 'y':

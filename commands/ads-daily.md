@@ -11,7 +11,7 @@ Run as the **ads-manager** agent. Load the **googleads-gaql** and
 ## Steps
 
 1. Bind to the workspace (read `workspace.json` + `context/*.md`).
-2. Run these reads via `ads-ga query` (see googleads-gaql skill):
+2. Run these reads via the ga helper (see googleads-gaql skill):
    - Last-24h spend + conversions per campaign
    - Disapproved ads
    - Flatlined campaigns over the last 7 days
