@@ -3,7 +3,7 @@ description: Ad-hoc creative health check. Identifies LOW-performing RSA assets 
 argument-hint: (no arguments)
 ---
 
-# /ads-creative
+# /google-ads-copilot:creative
 
 Run as **ads-manager**. Load **googleads-gaql**, **ads-creative-management**,
 **ads-change-execution**, **ads-explain-to-beginner**.
@@ -17,5 +17,5 @@ Run as **ads-manager**. Load **googleads-gaql**, **ads-creative-management**,
 5. Else: pick the highest-spend ad with LOW assets, draft TWO proposals
    (one `creative-pause`, one `creative-add`) with paired IDs (e.g.
    `2026-04-30-creative-01a-pause`, `2026-04-30-creative-01b-add`).
-6. Print TL;DR + ad name + counts + `/ads-apply` instructions for both.
+6. Print TL;DR + ad name + counts + `/google-ads-copilot:apply` instructions for both.
 7. Stop.

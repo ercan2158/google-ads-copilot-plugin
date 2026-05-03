@@ -15,7 +15,7 @@
     {
       "name": "google-ads-copilot",
       "source": "./",
-      "description": "Slash commands (/ads-daily, /ads-weekly, /ads-monthly, /ads-search-terms, /ads-budgets, /ads-creative, /ads-bootstrap, /ads-explain, /ads-apply) backed by an ads-manager agent and 7 skills. /ads-apply is the only command that mutates the account.",
+      "description": "Nine slash commands (daily, weekly, monthly, search-terms, budgets, creative, bootstrap, explain, apply) backed by an ads-manager agent and 7 skills. The 'apply' command is the only one that mutates the account; everything else is read-only or writes a proposal file.",
       "category": "advertising",
       "tags": ["google-ads", "advertising", "marketing", "ppc", "operations", "saas"],
       "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin"

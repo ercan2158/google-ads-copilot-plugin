@@ -3,7 +3,7 @@ description: First-run for a SaaS project. If no workspace.json exists, scaffold
 argument-hint: (no arguments)
 ---
 
-# /ads-bootstrap
+# /google-ads-copilot:bootstrap
 
 Run as **ads-manager**. Load every skill the audit needs (gaql, account-audit
 full, search-term-mining, budget-management, creative-management,
@@ -96,7 +96,7 @@ If missing, run the interactive scaffold:
 
    Each stub gets a one-line frontmatter comment + the prompt above as
    placeholder content. Tell the operator: "Fill these in before running
-   `/ads-weekly` or `/ads-monthly` — the agent reads them every run."
+   `/google-ads-copilot:weekly` or `/google-ads-copilot:monthly` — the agent reads them every run."
 
 9. **Confirm scaffold.** Print:
    ```
@@ -122,7 +122,7 @@ Then proceed to Stage B with the just-created workspace.
 4. Write `workspace/refactors/$(date +%Y-%m-%d)-phased-plan.md` containing:
    - Phase 0 (now): things the operator should do manually outside this plugin
      (e.g. fix conversion tracking, link GA4, set up enhanced conversions)
-   - Phase 1 (next 1–2 weeks): things `/ads-weekly` and `/ads-monthly` will
+   - Phase 1 (next 1–2 weeks): things `/google-ads-copilot:weekly` and `/google-ads-copilot:monthly` will
      handle once they start running (mining, budget-tuning, creative refresh)
    - Phase 2 (next 1–3 months): structural recommendations the operator
      should review (campaign restructure, new themes) — NOT v1 scope

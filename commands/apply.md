@@ -1,9 +1,9 @@
 ---
 description: Apply a previously drafted proposal. The ONLY command that mutates the Google Ads account. Refuses if account-ID doesn't match. Runs validate_only dry-run first, then asks y/n, then logs every op to change-log.
-argument-hint: <proposal-id>  e.g. /ads-apply 2026-04-30-negatives-01
+argument-hint: <proposal-id>  e.g. /google-ads-copilot:apply 2026-04-30-negatives-01
 ---
 
-# /ads-apply
+# /google-ads-copilot:apply
 
 Run as the **ads-manager** agent. Load the **ads-change-execution** skill.
 
@@ -14,7 +14,7 @@ Run as the **ads-manager** agent. Load the **ads-change-execution** skill.
 
 If `$1` is missing or empty: print
 ```
-Usage: /ads-apply <proposal-id>
+Usage: /google-ads-copilot:apply <proposal-id>
 
 Available pending proposals:
   <list workspace/proposals/*.md basenames here>
@@ -22,7 +22,7 @@ Available pending proposals:
 
 ## Steps
 
-Follow the `/ads-apply` contract in the **ads-change-execution** skill
+Follow the `/google-ads-copilot:apply` contract in the **ads-change-execution** skill
 verbatim. Specifically:
 
 1. Read `workspace/proposals/$1.md`. Extract the last fenced ```json block.

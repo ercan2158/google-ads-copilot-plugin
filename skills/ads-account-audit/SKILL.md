@@ -26,7 +26,7 @@ Apply to each section.
 
 ## Output target
 
-- `/ads-monthly` writes `workspace/audit/<YYYY-MM>-monthly.md` with all 8 sections.
-- `/ads-weekly` covers sections 1, 3, 4, 5 only — quick weekly cycle.
-- `/ads-bootstrap` writes `workspace/audit/<YYYY-MM-DD>-bootstrap.md` (full 8 sections) AND `workspace/refactors/<YYYY-MM-DD>-phased-plan.md` with the prioritized fix list as phases.
-- `/ads-daily` does NOT call this skill; it has its own narrower checks.
+- `/google-ads-copilot:monthly` writes `workspace/audit/<YYYY-MM>-monthly.md` with all 8 sections.
+- `/google-ads-copilot:weekly` covers sections 1, 3, 4, 5 only — quick weekly cycle.
+- `/google-ads-copilot:bootstrap` writes `workspace/audit/<YYYY-MM-DD>-bootstrap.md` (full 8 sections) AND `workspace/refactors/<YYYY-MM-DD>-phased-plan.md` with the prioritized fix list as phases.
+- `/google-ads-copilot:daily` does NOT call this skill; it has its own narrower checks.

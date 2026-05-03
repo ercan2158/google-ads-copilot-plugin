@@ -3,7 +3,7 @@ description: Full monthly review — all 8 audit sections, with creative + budge
 argument-hint: (no arguments)
 ---
 
-# /ads-monthly
+# /google-ads-copilot:monthly
 
 Run as **ads-manager**. Load **googleads-gaql**, **ads-account-audit**
 (full 8-section), **ads-search-term-mining**, **ads-budget-management**,
@@ -22,5 +22,5 @@ Run as **ads-manager**. Load **googleads-gaql**, **ads-account-audit**
 5. Print chat:
    - TL;DR (≤ 5 lines, plain English summary of the month)
    - One section, one line: `<section> — <severity emoji> <one-liner>`
-   - Action: list the proposals drafted with their `/ads-apply` commands.
-6. Stop. Account untouched (until operator runs `/ads-apply`).
+   - Action: list the proposals drafted with their `/google-ads-copilot:apply` commands.
+6. Stop. Account untouched (until operator runs `/google-ads-copilot:apply`).

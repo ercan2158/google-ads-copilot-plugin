@@ -3,7 +3,7 @@ description: Mine the last 30 days of search terms and draft a negative-keywords
 argument-hint: (no arguments)
 ---
 
-# /ads-search-terms
+# /google-ads-copilot:search-terms
 
 Run as the **ads-manager** agent. Load **googleads-gaql**,
 **ads-search-term-mining**, **ads-change-execution**, **ads-explain-to-beginner**.
@@ -20,5 +20,5 @@ Run as the **ads-manager** agent. Load **googleads-gaql**,
    - TL;DR (plain English, e.g. "Drafted 14 negatives across 3 campaigns,
      est. €47/mo savings.")
    - Per-campaign one-liner with count
-   - Action: "Review at workspace/proposals/<file>.md. Ship: /ads-apply <id>"
+   - Action: "Review at workspace/proposals/<file>.md. Ship: /google-ads-copilot:apply <id>"
 7. Stop. Account untouched.

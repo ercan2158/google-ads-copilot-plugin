@@ -45,7 +45,7 @@ bin/setup
 # 3. Per-project bootstrap (once per SaaS app)
 cd ~/dev/personal/<your-saas-app>
 claude
-> /ads-bootstrap
+> /google-ads-copilot:bootstrap
 #    → first run scaffolds workspace.json + context/ stubs interactively,
 #      then runs a deep audit
 ```
@@ -55,7 +55,7 @@ After that, daily/weekly/monthly use just works — no more config.
 ## Workspace structure
 
 The plugin keeps **all per-account state in your project repo**, not in the
-plugin. After `/ads-bootstrap`, your SaaS project has:
+plugin. After `/google-ads-copilot:bootstrap`, your SaaS project has:
 
 ```
 your-saas-app/
@@ -68,7 +68,7 @@ your-saas-app/
 │   └── persona-overrides.md
 └── workspace/
     ├── proposals/          # drafted mutations (review before applying)
-    │   └── applied/        # proposals that have been /ads-apply'd
+    │   └── applied/        # proposals that have been /google-ads-copilot:apply'd
     ├── change-log/         # append-only JSONL of every applied mutation
     ├── digests/            # daily TL;DR files (only on anomaly)
     ├── audit/              # weekly/monthly/bootstrap audit reports
@@ -85,25 +85,25 @@ CI-style use.
 
 | Command | What it does |
 |---|---|
-| `/ads-bootstrap` | First-run scaffold + deep audit (per project) |
-| `/ads-daily` | Anything-on-fire check; only writes a digest on anomaly |
-| `/ads-weekly` | Spend, search-terms, creative, disapprovals; may draft 0–2 proposals |
-| `/ads-monthly` | Full 8-section audit; may draft up to 3 proposals |
-| `/ads-budgets` | Ad-hoc budget pacing review |
-| `/ads-creative` | Ad-hoc RSA asset health check |
-| `/ads-search-terms` | Mine 30 days of search terms for negative-keyword candidates |
-| `/ads-explain <term>` | Plain-English explainer for any Google Ads concept |
-| `/ads-apply <proposal-id>` | **The only mutating command.** Applies a drafted proposal |
+| `/google-ads-copilot:bootstrap` | First-run scaffold + deep audit (per project) |
+| `/google-ads-copilot:daily` | Anything-on-fire check; only writes a digest on anomaly |
+| `/google-ads-copilot:weekly` | Spend, search-terms, creative, disapprovals; may draft 0–2 proposals |
+| `/google-ads-copilot:monthly` | Full 8-section audit; may draft up to 3 proposals |
+| `/google-ads-copilot:budgets` | Ad-hoc budget pacing review |
+| `/google-ads-copilot:creative` | Ad-hoc RSA asset health check |
+| `/google-ads-copilot:search-terms` | Mine 30 days of search terms for negative-keyword candidates |
+| `/google-ads-copilot:explain <term>` | Plain-English explainer for any Google Ads concept |
+| `/google-ads-copilot:apply <proposal-id>` | **The only mutating command.** Applies a drafted proposal |
 
 ## Safety model
 
 Five gates between any read-only command and a live mutation:
 
-1. **One mutating command.** Only `/ads-apply` ever calls a Google Ads
+1. **One mutating command.** Only `/google-ads-copilot:apply` ever calls a Google Ads
    `:mutate` endpoint.
 2. **Always-propose.** Every potential change is drafted as a `.md` file
    you read before approving.
-3. **Account-ID pin.** `/ads-apply` refuses if the proposal's `account_id`
+3. **Account-ID pin.** `/google-ads-copilot:apply` refuses if the proposal's `account_id`
    doesn't match your `workspace.json`.
 4. **`validate_only` dry-run.** Every apply runs `validateOnly:true` first;
    only proceeds if Google accepts the dry-run.
@@ -119,7 +119,7 @@ header injection, and error paths without touching the live API.
 ```bash
 cd ~/dev/personal/<your-saas-app>     # any folder with a workspace.json
 claude
-> /ads-daily
+> /google-ads-copilot:daily
 ```
 
 The plugin walks up from cwd, finds `workspace.json`, and binds to that
@@ -135,7 +135,7 @@ account for the session. Run any command from anywhere inside the project.
 - **`PERMISSION_DENIED` from Google Ads.** Likely a developer-token approval
   level (Test/Basic/Standard) gap for the operations you're trying.
 - **`workspace.json not found`.** You're outside any project workspace.
-  Either `cd` into one, or run `/ads-bootstrap` to scaffold one in the
+  Either `cd` into one, or run `/google-ads-copilot:bootstrap` to scaffold one in the
   current directory.
 
 ## License

@@ -1,6 +1,6 @@
 ---
 name: ads-search-term-mining
-description: Heuristics for turning a 30-day search-terms report into a vetted negative-keyword proposal. Loaded by /ads-search-terms and /ads-weekly.
+description: Heuristics for turning a 30-day search-terms report into a vetted negative-keyword proposal. Loaded by /google-ads-copilot:search-terms and /google-ads-copilot:weekly.
 ---
 
 # ads-search-term-mining

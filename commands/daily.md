@@ -3,7 +3,7 @@ description: Daily "anything on fire?" check on the bound Google Ads account. Re
 argument-hint: (no arguments)
 ---
 
-# /ads-daily
+# /google-ads-copilot:daily
 
 Run as the **ads-manager** agent. Load the **googleads-gaql** and
 **ads-explain-to-beginner** skills.
@@ -33,5 +33,5 @@ Run as the **ads-manager** agent. Load the **googleads-gaql** and
 
 - No mutations.
 - No proposals beyond passively flagging "you might want to look at X" —
-  search-term mining and budget review are `/ads-search-terms` and `/ads-budgets`
+  search-term mining and budget review are `/google-ads-copilot:search-terms` and `/google-ads-copilot:budgets`
   respectively.

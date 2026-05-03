@@ -3,7 +3,7 @@ description: Ad-hoc budget pacing review. Drafts a budget proposal if pacing is 
 argument-hint: (no arguments)
 ---
 
-# /ads-budgets
+# /google-ads-copilot:budgets
 
 Run as **ads-manager**. Load **googleads-gaql**, **ads-budget-management**,
 **ads-change-execution**, **ads-explain-to-beginner**.
@@ -15,5 +15,5 @@ Run as **ads-manager**. Load **googleads-gaql**, **ads-budget-management**,
 3. Apply ads-budget-management thresholds.
 4. If 0 actions: print "Pacing clean. Spend is on track." and exit.
 5. Else: draft a `budget` proposal in `workspace/proposals/`.
-6. Print TL;DR + per-campaign one-liner + `/ads-apply` instruction.
+6. Print TL;DR + per-campaign one-liner + `/google-ads-copilot:apply` instruction.
 7. Stop.

@@ -1,21 +1,21 @@
 ---
 name: ads-change-execution
-description: Proposal protocol. Loaded any time the agent considers a mutation. Defines the proposal-file format, the /ads-apply contract, the change-log line shape, and the five safety gates between intent and account.
+description: Proposal protocol. Loaded any time the agent considers a mutation. Defines the proposal-file format, the /google-ads-copilot:apply contract, the change-log line shape, and the five safety gates between intent and account.
 ---
 
 # ads-change-execution
 
 Mutations never go straight to the account. The agent drafts a proposal
-file; the operator runs `/ads-apply <id>`; and only `/ads-apply` calls
+file; the operator runs `/google-ads-copilot:apply <id>`; and only `/google-ads-copilot:apply` calls
 the ga helper against the account.
 
 ## The five gates
 
-1. **Single mutating command.** Only `/ads-apply` mutates.
+1. **Single mutating command.** Only `/google-ads-copilot:apply` mutates.
 2. **Always-propose.** Every mutation = a `.md` file the operator can read.
-3. **Account-ID pin.** `/ads-apply` refuses if the proposal's `account_id`
+3. **Account-ID pin.** `/google-ads-copilot:apply` refuses if the proposal's `account_id`
    does not match `workspace.json`'s `account.customer_id`.
-4. **`validate_only` dry-run.** `/ads-apply` runs the change with
+4. **`validate_only` dry-run.** `/google-ads-copilot:apply` runs the change with
    `validateOnly:true` first; only proceeds on success.
 5. **Append-only change-log.** Every applied operation = one JSON line in
    `workspace/change-log/$(date +%Y-%m-%d).jsonl`.
@@ -62,11 +62,11 @@ Structure:
 ````
 
 The fenced ```json block at the bottom is the **executable** part.
-`/ads-apply` extracts it with `awk` / `jq` and runs it.
+`/google-ads-copilot:apply` extracts it with `awk` / `jq` and runs it.
 
-## /ads-apply contract
+## /google-ads-copilot:apply contract
 
-Pseudo-code for `/ads-apply <id>`:
+Pseudo-code for `/google-ads-copilot:apply <id>`:
 
 ```
 1. Read workspace/proposals/<id>.md, extract last fenced ```json block.
@@ -85,7 +85,7 @@ Pseudo-code for `/ads-apply <id>`:
    - mv workspace/proposals/<id>.md workspace/proposals/applied/<id>.md
    - Print "Applied. N operations live. Logged to change-log/."
 7. On 'n':
-   - Leave proposal in place. Print "Skipped. Re-run /ads-apply <id> later."
+   - Leave proposal in place. Print "Skipped. Re-run /google-ads-copilot:apply <id> later."
 ```
 
 ## Change-log line shape
@@ -108,9 +108,9 @@ One JSON line per applied operation. Newline-terminated. Append-only.
 
 | kind | drafted by | ops |
 |---|---|---|
-| `negatives` | `/ads-search-terms`, `/ads-weekly` | add negative keywords (campaign-level) |
-| `budget` | `/ads-budgets`, `/ads-weekly`, `/ads-monthly` | update `campaign_budget.amount_micros` |
-| `creative-pause` | `/ads-creative`, `/ads-monthly` | pause `ad_group_ad` |
-| `creative-add` | `/ads-creative` | add headlines/descriptions to RSA |
+| `negatives` | `/google-ads-copilot:search-terms`, `/google-ads-copilot:weekly` | add negative keywords (campaign-level) |
+| `budget` | `/google-ads-copilot:budgets`, `/google-ads-copilot:weekly`, `/google-ads-copilot:monthly` | update `campaign_budget.amount_micros` |
+| `creative-pause` | `/google-ads-copilot:creative`, `/google-ads-copilot:monthly` | pause `ad_group_ad` |
+| `creative-add` | `/google-ads-copilot:creative` | add headlines/descriptions to RSA |
 
 Out of scope for v1: `campaign-create`, `ad-group-create`, anything structural.

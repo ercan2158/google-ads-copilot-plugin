@@ -3,7 +3,7 @@ description: Weekly review — audit sections 1/3/4/5 + budget pacing review + s
 argument-hint: (no arguments)
 ---
 
-# /ads-weekly
+# /google-ads-copilot:weekly
 
 Run as the **ads-manager** agent. Load **googleads-gaql**,
 **ads-account-audit** (focus: spend, search terms, creative, disapprovals),
@@ -21,7 +21,7 @@ Run as the **ads-manager** agent. Load **googleads-gaql**,
 5. Print chat:
    - TL;DR (max 4 lines)
    - Numbers (max 5 lines)
-   - Action: 0–2 proposals listed with their `/ads-apply` commands.
+   - Action: 0–2 proposals listed with their `/google-ads-copilot:apply` commands.
 6. Write `workspace/digests/$(date +%Y-%m-%d)-weekly.md` with the chat
    output + a per-section severity (🔴/🟡/🟢) line. Always write — weekly
    is a structured artifact, not anomaly-gated.

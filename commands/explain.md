@@ -1,16 +1,16 @@
 ---
 description: Plain-English explainer for a Google Ads term, metric, or concept. Read-only, no account access. Just translates jargon.
-argument-hint: <term-or-concept>  e.g. /ads-explain impression share
+argument-hint: <term-or-concept>  e.g. /google-ads-copilot:explain impression share
 ---
 
-# /ads-explain
+# /google-ads-copilot:explain
 
 Run as **ads-manager**. Load **ads-explain-to-beginner**.
 
 ## Steps
 
 1. Read `$ARGUMENTS` (the term or concept the operator typed).
-2. If empty: print "Usage: /ads-explain <term>" + the table of terms from
+2. If empty: print "Usage: /google-ads-copilot:explain <term>" + the table of terms from
    the explain-to-beginner skill.
 3. Otherwise:
    - Look up the term in the skill's table. If present: print the 1-line

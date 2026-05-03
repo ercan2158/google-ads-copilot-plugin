@@ -1,6 +1,6 @@
 ---
 name: ads-explain-to-beginner
-description: UX rules for explaining Google Ads to a non-technical operator. Loaded by every /ads-* command — defines TL;DR shape, jargon translations, anti-jargon rule.
+description: UX rules for explaining Google Ads to a non-technical operator. Loaded by every google-ads-copilot slash command — defines TL;DR shape, jargon translations, anti-jargon rule.
 ---
 
 # ads-explain-to-beginner

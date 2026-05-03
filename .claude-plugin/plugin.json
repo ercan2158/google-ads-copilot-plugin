@@ -1,7 +1,7 @@
 {
   "name": "google-ads-copilot",
   "version": "0.1.0",
-  "description": "AI-driven Google Ads operator for non-technical SaaS founders. Slash commands that read the account, propose mutations as files, and apply them only on explicit /ads-apply.",
+  "description": "AI-driven Google Ads operator for non-technical SaaS founders. Slash commands that read the account, propose mutations as files, and apply them only on explicit /google-ads-copilot:apply.",
   "author": {
     "name": "Ercan",
     "email": "kuercan@proton.me",
