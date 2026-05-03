@@ -30,6 +30,13 @@ If missing, run the interactive scaffold:
    ```
    GA_CUSTOMER_ID=<id> "${CLAUDE_PLUGIN_ROOT}/bin/ga" query "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager FROM customer LIMIT 1"
    ```
+
+   **Issue all enrichment queries in PARALLEL** — emit them as a single
+   batch of Bash tool calls in one agent turn so the runtime runs them
+   concurrently. Sequential calls would mean N round-trips for an MCC
+   operator with N accessible accounts (~30s+ wall time at scale; the
+   token cache means only the first call pays the OAuth refresh cost).
+
    If a specific ID returns a `PERMISSION_DENIED` error, the operator
    doesn't have direct read access to that account — skip it but still
    list it as a raw ID in step 3 with a "(no read access)" note.
