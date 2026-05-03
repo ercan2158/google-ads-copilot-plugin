@@ -157,6 +157,103 @@ ORDER BY campaign.id, segments.device
 converts at a different rate than desktop — drives `bid-adjust` mobile
 modifiers.
 
+## Quality score history (last 30d)
+
+```sql
+SELECT
+  ad_group_criterion.criterion_id,
+  ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
+  ad_group_criterion.quality_info.quality_score,
+  ad_group_criterion.quality_info.creative_quality_score,
+  ad_group_criterion.quality_info.search_predicted_ctr,
+  ad_group_criterion.quality_info.post_click_quality_score,
+  metrics.cost_micros, metrics.impressions, metrics.conversions
+FROM keyword_view
+WHERE segments.date DURING LAST_30_DAYS
+  AND ad_group_criterion.status = 'ENABLED'
+  AND ad_group.status = 'ENABLED'
+  AND campaign.status = 'ENABLED'
+ORDER BY ad_group_criterion.quality_info.quality_score ASC, metrics.cost_micros DESC
+```
+
+`quality_score` is 1-10. The three sub-components (`creative_quality_score`,
+`search_predicted_ctr`, `post_click_quality_score`) are returned as
+enums (`BELOW_AVERAGE`, `AVERAGE`, `ABOVE_AVERAGE`). Low scores ←→
+underlying issues:
+
+| Component                    | If low, look at                        |
+|---|---|
+| `creative_quality_score`     | RSA assets — apply `creative-management` |
+| `search_predicted_ctr`       | keyword/ad alignment — possibly `keyword-pause` or restructure |
+| `post_click_quality_score`   | landing page experience — out of plugin scope |
+
+Sort by quality score ASC + cost DESC to surface high-spend, low-quality
+keywords first — those are the highest-leverage candidates.
+
+## Auction insights (last 30d)
+
+```sql
+SELECT
+  campaign.name,
+  ad_group.name,
+  metrics.search_impression_share,
+  metrics.search_top_impression_share,
+  metrics.search_absolute_top_impression_share,
+  metrics.search_rank_lost_impression_share,
+  metrics.search_budget_lost_impression_share
+FROM campaign
+WHERE segments.date DURING LAST_30_DAYS
+  AND campaign.status = 'ENABLED'
+ORDER BY metrics.search_impression_share ASC
+```
+
+Five impression-share metrics tell different stories:
+
+| Metric                                       | Meaning                                                          |
+|---|---|
+| `search_impression_share`                    | % of available impressions you got                                |
+| `search_top_impression_share`                | % of *top-half* impressions you got                              |
+| `search_absolute_top_impression_share`       | % of *absolute-top-of-page* impressions you got                  |
+| `search_rank_lost_impression_share`          | % missed because Ad Rank was insufficient (rivals outranked you) |
+| `search_budget_lost_impression_share`        | % missed because your daily budget ran out                        |
+
+Drives different decisions: high `rank_lost` → `keyword-pause` weak terms or improve creative; high `budget_lost` → `budget` increase if CPA is acceptable.
+
+For competitor-domain comparison (who you're showing alongside):
+
+```sql
+SELECT
+  campaign.name,
+  metrics.search_impression_share,
+  metrics.search_outranking_share,
+  metrics.search_top_impression_share
+FROM campaign
+WHERE segments.date DURING LAST_30_DAYS
+ORDER BY metrics.search_impression_share DESC
+```
+
+(`auction_insight_domain` is the resource for full per-competitor
+breakdowns; field availability varies by API version. If queries against
+it return `INVALID_FIELD`, fall back to the metrics above.)
+
+## Audience performance (last 30d)
+
+```sql
+SELECT
+  ad_group.name,
+  ad_group_criterion.audience.audience,
+  ad_group_criterion.criterion_id,
+  metrics.cost_micros, metrics.conversions, metrics.impressions, metrics.clicks
+FROM ad_group_audience_view
+WHERE segments.date DURING LAST_30_DAYS
+ORDER BY metrics.cost_micros DESC
+```
+
+Reports performance per attached audience (in-market, custom, remarketing,
+Customer Match). Drives `bid-adjust` proposals on audience criteria —
+bid up audiences that convert above target; bid down or detach those
+that don't.
+
 ## Time-of-day & day-of-week performance (last 30d)
 
 ```sql

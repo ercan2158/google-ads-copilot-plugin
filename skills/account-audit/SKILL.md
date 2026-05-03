@@ -12,9 +12,9 @@ Audit sections, in priority order:
 3. **Search terms** — full mining via `search-term-mining` skill.
 4. **Creative** — RSA asset performance via gaql skill; flag LOW assets.
 5. **Disapprovals** — any disapproved ads.
-6. **Structure sanity** — campaign count, ad-group count, keyword count per campaign. Flag campaigns with > 50 keywords (Google's recommended max for Search) or < 3 ads (no A/B coverage).
+6. **Structure sanity & quality score** — campaign count, ad-group count, keyword count per campaign. Flag campaigns with > 50 keywords (Google's recommended max for Search) or < 3 ads (no A/B coverage). Pull "Quality score history" from `gaql`; flag any keyword spending > €5 with quality_score ≤ 4 (drives `creative-management` review or `keyword-pause`). Pull "Auction insights"; flag campaigns with `search_rank_lost_impression_share > 30%` (creative or bid issue) and `search_budget_lost_impression_share > 30%` (budget issue → `budget` proposal).
 7. **KPI alignment** — read `context/kpi-tree.md`, compare current 30-day metrics, surface KPI gaps.
-8. **Recommendations** — bullet list, ranked by expected € impact, separated into "I'll handle" (proposable) and "you decide" (out of v1 scope, structural).
+8. **Recommendations** — bullet list, ranked by expected € impact, separated into "I'll handle" (proposable) and "you decide" (out of v1 scope, structural). Cross-reference with `/google-ads-copilot:recommendations` output if Google's dashboard recommendations have surfaced relevant items. Audience-level findings from "Audience performance" gaql query land here as `bid-adjust` candidates.
 
 ## Severity rubric
 
