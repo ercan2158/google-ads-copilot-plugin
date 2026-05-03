@@ -12,8 +12,8 @@ proposals; it produces a plan for the operator to consider.
 
 ## Stage A — Workspace scaffold (only if `workspace.json` is missing)
 
-Walk up from cwd up to 5 levels looking for `workspace.json`. If found, skip
-to Stage B.
+Walk up from cwd up to 5 levels looking for `workspace.json` (matches what
+`bin/ga`'s `find_workspace` does). If found, skip to Stage B.
 
 If missing, run the interactive scaffold:
 
@@ -24,14 +24,15 @@ If missing, run the interactive scaffold:
    Parse `resourceNames` → list of `customers/<id>` strings. Strip the prefix
    to get raw customer IDs.
 
-2. **Enrich with names + currency + timezone.** For each accessible ID, run a
-   query (login-customer-id will be missing on the first call — that's fine,
-   the helper falls back to the same customer ID):
+2. **Enrich with names + currency + timezone.** For each accessible ID,
+   set `GA_CUSTOMER_ID=<id>` so `bin/ga` uses it instead of trying to
+   resolve `workspace.json` (which doesn't exist yet during bootstrap):
    ```
-   "${CLAUDE_PLUGIN_ROOT}/bin/ga" query "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager FROM customer LIMIT 1"
+   GA_CUSTOMER_ID=<id> "${CLAUDE_PLUGIN_ROOT}/bin/ga" query "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager FROM customer LIMIT 1"
    ```
-   (If the call fails because `workspace.json` doesn't exist yet, skip
-   enrichment and just show raw IDs.)
+   If a specific ID returns a `PERMISSION_DENIED` error, the operator
+   doesn't have direct read access to that account — skip it but still
+   list it as a raw ID in step 3 with a "(no read access)" note.
 
 3. **Ask the operator to pick a customer.** Present a numbered list:
    ```

@@ -33,12 +33,13 @@ EOF
   exit 64
 }
 
-# Walk up from PWD looking for workspace.json. Up to 6 levels. Echo absolute
-# path to stdout on success; non-zero exit + stderr message on failure.
+# Walk up from PWD looking for workspace.json. Up to 5 levels. Echo absolute
+# path to stdout on success; non-zero exit (silent) on failure — caller
+# decides whether to print or fall back to env-var overrides.
 find_workspace() {
   local dir="$PWD"
   local i
-  for i in 1 2 3 4 5 6; do
+  for i in 1 2 3 4 5; do
     if [[ -f "$dir/workspace.json" ]]; then
       echo "$dir/workspace.json"
       return 0
@@ -46,7 +47,6 @@ find_workspace() {
     [[ "$dir" == "/" ]] && break
     dir=$(cd "$dir/.." && pwd)
   done
-  echo "ga: workspace.json not found in cwd or any of its 6 ancestors" >&2
   return 1
 }
 
@@ -79,11 +79,24 @@ get_access_token() {
 
 # load_context populates global vars used by curl callers:
 #   _GA_ACCESS_TOKEN, _GA_DEV_TOKEN, _GA_MGR_ID, _GA_CUSTOMER_ID
+#
+# Resolution order:
+#   1. Walk up from cwd to find workspace.json (normal case).
+#   2. Fall back to GA_CUSTOMER_ID / GA_MANAGER_CUSTOMER_ID env vars
+#      (used by /ads-bootstrap before workspace.json exists, or for
+#      ad-hoc one-off calls outside any workspace).
+#   3. If neither, leave _GA_CUSTOMER_ID empty — cmd_query will error
+#      clearly; cmd_proxy works fine for endpoints that don't need it
+#      (e.g. /v23/customers:listAccessibleCustomers).
 load_context() {
   local workspace_json
-  workspace_json=$(find_workspace)
-  _GA_CUSTOMER_ID=$(jq -re '.account.customer_id' "$workspace_json")
-  _GA_MGR_ID=$(jq -r '.account.manager_customer_id // empty' "$workspace_json")
+  if workspace_json=$(find_workspace); then
+    _GA_CUSTOMER_ID=$(jq -re '.account.customer_id' "$workspace_json")
+    _GA_MGR_ID=$(jq -r '.account.manager_customer_id // empty' "$workspace_json")
+  else
+    _GA_CUSTOMER_ID="${GA_CUSTOMER_ID:-}"
+    _GA_MGR_ID="${GA_MANAGER_CUSTOMER_ID:-}"
+  fi
   _GA_DEV_TOKEN=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
   _GA_ACCESS_TOKEN=$(get_access_token)
 }
@@ -108,6 +121,10 @@ cmd_query() {
   local _GA_ACCESS_TOKEN _GA_DEV_TOKEN _GA_MGR_ID _GA_CUSTOMER_ID
   local _GA_HEADER_ARGS
   load_context
+  if [[ -z "$_GA_CUSTOMER_ID" ]]; then
+    echo "ga query: customer_id required — cd into a workspace, or set GA_CUSTOMER_ID=<id>" >&2
+    exit 1
+  fi
   build_header_args
 
   local url body
