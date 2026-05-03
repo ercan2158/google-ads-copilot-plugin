@@ -7,7 +7,8 @@ argument-hint: (no arguments)
 
 Run as **manager**. Load **gaql**, **change-execution**,
 **creative-management**, **search-term-mining**, **budget-management**,
-**explain-to-beginner**.
+**smart-bidding**, **conversion-health**, **pmax** (if any
+PERFORMANCE_MAX campaign exists), **explain-to-beginner**.
 
 ## Steps
 
@@ -27,9 +28,9 @@ Run as **manager**. Load **gaql**, **change-execution**,
    | `RESPONSIVE_SEARCH_AD`         | `creative-add`                                       |
    | `OPTIMIZE_TEXT_AD_AND_RSAS`    | `creative-add`                                       |
    | `CAMPAIGN_BUDGET`              | `budget`                                             |
-   | `TARGET_CPA_OPT_IN`            | manual review (bidding strategy change)              |
-   | `TARGET_ROAS_OPT_IN`           | manual review (bidding strategy change)              |
-   | `MAXIMIZE_CONVERSIONS_OPT_IN`  | manual review (bidding strategy change)              |
+   | `TARGET_CPA_OPT_IN`            | `bidding-strategy-shift` — only if `smart-bidding` confirms ≥30 conv/30d AND kpi-tree says CPA-driven |
+   | `TARGET_ROAS_OPT_IN`           | `bidding-strategy-shift` — only if `smart-bidding` confirms ≥50 conv-with-value/30d AND kpi-tree says value-driven |
+   | `MAXIMIZE_CONVERSIONS_OPT_IN`  | `bidding-strategy-shift` — only if `smart-bidding` confirms ≥30 conv/30d (no target needed) |
    | `OPTIMIZE_AD_ROTATION`         | manual review (rare, low impact)                     |
    | `CUSTOMER_MATCH`               | `customer-match-upload` (only if ≥1k matched users)  |
    | `SEARCH_PARTNERS_OPT_IN`       | typically SKIP (low-quality traffic at small budgets)|

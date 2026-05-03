@@ -28,6 +28,15 @@ For each `search_term`:
 3. **High spend, zero conv** alone is not enough — there's natural
    variance. Threshold: ≥ €X per query where X = max(€5, daily budget × 0.05),
    or ≥ 100 impressions and 0 conv over 30 days.
+
+   **Conversion-lag adjustment.** Conversions for the last N days are
+   still firing in. Read `context/kpi-tree.md` for `lag_days` (default
+   3). Apply the conversion threshold against the window
+   `[today-30, today-lag_days]` — i.e. exclude the trailing `lag_days`
+   from the conversion count. Otherwise borderline candidates that
+   converted yesterday get added as negatives today. Spend in the
+   trailing `lag_days` window still counts toward the cost threshold —
+   spend doesn't lag.
 4. **Long tail?** If the same theme recurs (e.g. multiple "free X" queries),
    propose a single PHRASE or EXACT negative on the theme word, not 20
    tail variants.
@@ -53,12 +62,43 @@ A reference table for the patterns above. Substitute `<product>`,
 
 When in doubt, prefer PHRASE > EXACT > BROAD.
 
+### Close-variants advisory
+
+Google's close-variant matching (since 2018, broadened in 2021) means
+PHRASE/BROAD negatives don't always block what you'd expect:
+
+- A PHRASE negative on `free` blocks `"free X"` and `"X free"` but
+  may still let `"freebie X"` or `"X freely"` through.
+- Plurals/typos may slip past EXACT negatives — Google treats them as
+  variants on the positive side but is stricter on the negative side.
+  An EXACT negative on `templates` doesn't block `template`.
+
+When the theme is critical (brand-defense, off-ICP categories),
+add the singular AND plural AND common typo variants explicitly. For
+brand-collision negatives, also add the most-common misspellings of
+the competitor's name.
+
 ## Scope
 
 Negative keywords go on the **campaign** that triggered the query, not on
 all campaigns, unless the same theme appears across multiple campaigns —
-then propose a customer-level negative keyword list (out of v1 scope; for
-v1, do per-campaign).
+then either:
+
+- **Per-campaign batch** (v1 default) — draft one `negatives` proposal
+  per affected campaign, each with the same theme word. Audit trail is
+  granular but verbose at scale.
+- **Customer-level negative criterion** (v1 minimal support via the
+  `customer-negative-criterion-add` kind in `change-execution`,
+  primarily for PMax mining) — one negative blocks the query across
+  **every** campaign in the account. Use only when the operator has
+  confirmed the term is universally off-ICP. Surface "this affects all
+  campaigns including campaigns we haven't audited" in the proposal
+  TL;DR.
+- **Customer-level negative-keyword *list*** (multiple keywords managed
+  as a named, reusable list) — out of v1 scope (`shared_set` +
+  `shared_criterion` + `campaign_shared_set` resources, three-step
+  flow). Roadmap for v2 once accounts cross 5+ campaigns and operators
+  start managing negatives in bulk.
 
 ## Draft the proposal
 

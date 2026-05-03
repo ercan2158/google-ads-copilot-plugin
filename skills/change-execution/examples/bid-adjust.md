@@ -25,6 +25,46 @@ Decision rule:
 
 Cap any single adjustment at ±30%. Larger swings need operator review.
 
+## Compute cumulative effect before drafting
+
+Bid modifiers stack **multiplicatively**. Three modifiers on the same
+campaign (device -25% + geo +20% + schedule -50%) yield a final bid of
+`base × 0.75 × 1.20 × 0.50 = 0.45 × base` — 45% of base, not "the
+average" or "the biggest one wins."
+
+Before drafting any new `bid-adjust`, query existing modifiers via the
+"Existing bid modifiers" query in `gaql`. Compute the cumulative for
+the (campaign, intent slice) the new modifier targets:
+
+```
+existing_modifiers_on_intent = filter campaign_criterion rows where:
+  campaign.id == target_campaign AND
+  ( the criterion type intersects the new modifier's slice
+    — e.g. for a new device:MOBILE modifier, include any current
+    device:MOBILE row, plus any audience or schedule modifier that
+    co-applies during the same impressions )
+
+cumulative_after = product(existing.bid_modifier) × new_modifier
+```
+
+Cap proposals at cumulative ±50%. If `cumulative_after` would exceed
+1.50 or fall below 0.50, reject the new modifier as proposed; either
+update an existing modifier instead (`update` op against the existing
+criterion's resourceName), or surface in TL;DR that the targeted slice
+is already heavily modified and a structural fix (separate campaign /
+ad group) is the right answer.
+
+Surface the cumulative in the proposal's TL;DR:
+
+> *"Mobile modifier: -25% (this proposal). Existing geo Germany +20%
+> already applied. Combined effect on Mobile-in-Germany impressions:
+> 0.75 × 1.20 = 0.90 → 10% bid down vs base. Within ±50% cumulative
+> cap."*
+
+Without this surfacing, an operator who applied three "small" -15%
+modifiers over three weeks would silently end up at 0.85³ = 61%
+of base — and wonder why volume crashed.
+
 ## Proposal: device bid modifier
 
 `workspace/proposals/2026-05-03-bid-adjust-01.md`

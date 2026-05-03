@@ -7,18 +7,56 @@ description: Use when checking budget pacing, deciding whether to raise or lower
 
 ## Pacing formula
 
-For each campaign with `status = ENABLED`:
+Two formulas. Use the day-of-week-weighted one when the campaign has
+≥ 60 days of history; fall back to flat for new campaigns.
+
+### Flat (fallback for new campaigns)
 
 ```
-days_in_month  = days in current calendar month
 days_elapsed   = today's day-of-month
 expected_spend = (campaign_budget.amount_micros / 1_000_000) * days_elapsed
 actual_spend   = SUM(metrics.cost_micros) DURING THIS_MONTH / 1_000_000
 pacing_ratio   = actual_spend / expected_spend
 ```
 
+This is naive — most accounts spend disproportionately on weekdays vs
+weekends. On a Monday-Tuesday-Wednesday window early in a month, flat
+pacing systematically over-predicts expected and the alarm fires
+spuriously.
+
+### Day-of-week-weighted (preferred, ≥ 60 days history)
+
+Pull "Day-of-week historical baseline" from `gaql`. Compute per-campaign
+weight vector `w_dow ∈ {Mon, Tue, …, Sun}` summing to 1.0. Then:
+
+```
+elapsed_weighted = Σ (w_dow[d] × days_count_of_dow_d_so_far_this_month)
+                   for d in {Mon, Tue, …, Sun}, capped to days_elapsed total
+target_full      = (campaign_budget.amount_micros / 1_000_000) ×
+                   days_in_month
+expected_spend   = target_full × elapsed_weighted
+actual_spend     = SUM(metrics.cost_micros) DURING THIS_MONTH / 1_000_000
+pacing_ratio     = actual_spend / expected_spend
+```
+
+Worked example: campaign with weights `[0.18, 0.18, 0.17, 0.17, 0.17,
+0.07, 0.06]` (Mon-Sun) on day 8 of a 30-day month = 1×Mon + 1×Tue +
+1×Wed + 1×Thu + 1×Fri + 2×Sat + 1×Sun = 0.18+0.18+0.17+0.17+0.17+0.14+
+0.06 = 1.07 / 30 normalized = 35.7% of monthly target expected. Flat
+formula would say 8/30 = 26.7% — alarming if actual is at 30%, when
+it's actually under-pacing on a weekend-heavy slice.
+
 `pacing_ratio == 1.0` is on-target. Read `context/budget-policy.md` for the
 operator's tolerance band — assume ±20% if not specified.
+
+### Conversion-lag adjustment
+
+Conversion counts in pacing comparisons (CPA-driven decisions below)
+should subtract the trailing `lag_days` from the read window —
+conversions for the last N days are still firing in. Read
+`context/kpi-tree.md` for `lag_days` (default 3 if absent). Surface in
+TL;DR: "actual reflects through `<today minus lag_days>`; trailing
+conversions still firing."
 
 ## When to propose a budget shift
 

@@ -43,9 +43,29 @@ parenthetical translation. After that, no translation. Track per session.
 | conversion action | a specific definition of "what counts as a conversion" |
 | campaign / ad group / keyword | bucket → bucket → trigger word, top-down |
 | daily budget | average daily cap; Google can spend up to 2x on busy days, less on slow |
-| pacing | spend so far this month vs. expected for the days elapsed |
 | disapproved ad | Google has blocked the ad (policy violation, broken landing page, …) |
 | validate_only | a dry-run that checks if a change would work, without applying it |
+| conversion-action category | the type of action you count (PURCHASE, SIGNUP, LEAD, …); Smart Bidding uses this to know what kind of result to chase |
+| primary_for_goal | "this conversion counts toward my main goal"; Smart Bidding only optimizes for actions where this is true |
+| counting_type (one-per-click / many-per-click) | whether one click that converts twice counts as 1 or 2 conversions |
+| attribution model | how Google distributes conversion credit across multiple ad clicks before the conversion |
+| data-driven attribution (DDA) | Google's ML-based attribution model; needs ≥300 conv/30d on the action to function |
+| click-through lookback window | how many days after a click Google still credits a conversion to that click (default 30) |
+| enhanced conversions | a setup that hashes user data on your site and sends it back to Google for better matching — typically 15-30% accuracy uplift since iOS 14 |
+| Smart Bidding | umbrella name for tCPA, tROAS, Maximize Conversions, Maximize Conversion Value; ML-driven bid auctions |
+| tCPA / target CPA | a Smart Bidding strategy where you set a target cost-per-conversion |
+| tROAS / target ROAS | a Smart Bidding strategy where you set a target return-on-ad-spend (e.g. 4.0 = €4 revenue per €1 spent) |
+| Maximize Conversions | spend the daily budget as efficiently as possible to maximize conversion count, no fixed CPA |
+| bidding strategy system status | health label on a Smart Bidding strategy: ENABLED, LEARNING_NEW, LIMITED_BY_BID_CEILING, MISCONFIGURED_ZERO_ELIGIBILITY, etc. |
+| Smart Bidding learning phase | the 7-14 days after a strategy or major setting change where Google is still calibrating; CPA/ROAS will fluctuate |
+| Maximize Clicks | a strategy that buys the cheapest clicks, ignoring conversion likelihood — usually the wrong default for SaaS |
+| presence vs presence-or-interest | geo targeting modes: PRESENCE = people physically there; PRESENCE_OR_INTEREST (Google's default) also includes people merely interested in the location |
+| ad strength | Google's overall grade of a responsive search ad: POOR, AVERAGE, GOOD, EXCELLENT |
+| brand campaign | a separate campaign that bids only on your own product/company name; usually has the lowest CPA |
+| close variants | Google's auto-matching of plurals, typos, and reorderings for keywords and search terms |
+| conversion lag (lag_days) | typical days between an ad click and the conversion firing; reads of "last N days" should subtract this so you don't act on incomplete data |
+| bid modifier | a percentage adjustment to your base bid based on a criterion (device, geo, schedule, audience); they stack multiplicatively |
+| pacing | spend so far this month vs. expected for the days elapsed (day-of-week-weighted in mature accounts) |
 
 If you use a term not in this table, write your own one-line translation
 the first time. Don't apologize. Don't say "in plain English."

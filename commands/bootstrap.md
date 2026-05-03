@@ -6,9 +6,11 @@ argument-hint: (no arguments)
 # /google-ads-copilot:bootstrap
 
 Run as **manager**. Load every skill the audit needs (gaql, account-audit
-full, search-term-mining, budget-management, creative-management,
-explain-to-beginner). Do NOT load change-execution — bootstrap doesn't draft
-proposals; it produces a plan for the operator to consider.
+full 10-section, **conversion-health**, **smart-bidding**, **pmax**
+(only if any campaign has `advertising_channel_type = PERFORMANCE_MAX`),
+search-term-mining, budget-management, creative-management,
+explain-to-beginner). Do NOT load change-execution — bootstrap doesn't
+draft proposals; it produces a plan for the operator to consider.
 
 ## Stage A — Workspace scaffold (only if `workspace.json` is missing)
 
@@ -86,11 +88,20 @@ If missing, run the interactive scaffold:
    - `icp.md` — "Describe your ideal customer profile in 3–5 bullets. Who
      are they, what pain do they have, what makes them choose you?"
    - `product-positioning.md` — "What's your one-line positioning? Top 3
-     value props? Direct competitors you DO/DON'T bid on?"
+     value props? Direct competitors you DO/DON'T bid on? **Brand terms
+     you own** (product name + common misspellings — used by the
+     branded-vs-non-branded audit and brand-defense checks)."
    - `budget-policy.md` — "Monthly budget? Per-campaign caps? CPA target?
      ROAS floor?"
    - `kpi-tree.md` — "North-star KPI → leading indicators → ad-level
-     metrics. What does success look like in 30/90 days?"
+     metrics. What does success look like in 30/90 days? **Time-to-convert
+     (lag_days)**: typical days between click and conversion firing
+     (default 3 if absent — used by all comparison-window reads to
+     exclude conversions still firing). For B2B SaaS with a trial, this
+     is often the trial length + a few days. **Conversion category**:
+     which Google Ads conversion-action category matches your north-star
+     (PURCHASE / SUBSCRIBE_PAID / SIGNUP / LEAD / SUBMIT_LEAD_FORM / …)
+     — used by `conversion-health` to flag mis-categorized actions."
    - `persona-overrides.md` — "Who is NOT your customer? Free-tier seekers,
      hobbyists, students — anyone who shouldn't trigger your ads."
 
@@ -117,8 +128,8 @@ Then proceed to Stage B with the just-created workspace.
 ## Stage B — Deep audit
 
 1. Bind to workspace.
-2. Run the full 8-section audit per account-audit.
-3. Write `workspace/audit/$(date +%Y-%m-%d)-bootstrap.md` with all 8 sections.
+2. Run the full 10-section audit per account-audit.
+3. Write `workspace/audit/$(date +%Y-%m-%d)-bootstrap.md` with all 10 sections.
 4. Write `workspace/refactors/$(date +%Y-%m-%d)-phased-plan.md` containing:
    - Phase 0 (now): things the operator should do manually outside this plugin
      (e.g. fix conversion tracking, link GA4, set up enhanced conversions)

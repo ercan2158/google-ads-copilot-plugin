@@ -6,17 +6,18 @@ argument-hint: (no arguments)
 # /google-ads-copilot:monthly
 
 Run as **manager**. Load **gaql**, **account-audit**
-(full 8-section), **search-term-mining**, **budget-management**,
-**creative-management**, **change-execution**,
-**explain-to-beginner**.
+(full 10-section), **conversion-health**, **smart-bidding**, **pmax**
+(if any campaign has `advertising_channel_type = PERFORMANCE_MAX`),
+**search-term-mining**, **budget-management**, **creative-management**,
+**change-execution**, **explain-to-beginner**.
 
 ## Steps
 
 1. Bind to workspace.
-2. Run full 8-section audit per audit skill.
+2. Run full 10-section audit per audit skill.
 3. Per section, decide if a proposal is warranted (using the relevant
    skill's thresholds). Draft at most ONE proposal per section/kind.
-4. Write `workspace/audit/$(date +%Y-%m)-monthly.md` with all 8 sections,
+4. Write `workspace/audit/$(date +%Y-%m)-monthly.md` with all 10 sections,
    severity emoji per section, and a "Recommendations" tail listing the
    drafted proposals + the items left for the operator.
 5. Print chat:

@@ -31,7 +31,9 @@ Read `context/icp.md` and `context/product-positioning.md`. Headlines:
 - No duplicate first words across the set (Google penalizes)
 - Match the existing ad's tone and persona (don't introduce new positioning silently)
 
-Descriptions: 90 chars max, 4 candidates per RSA, expanded value prop.
+Descriptions: 90 chars max, **target 4, hard limit 4** (Google's
+maximum for active descriptions on an RSA). Each one expands a value
+prop or pain → outcome pairing.
 
 ## Proposal kinds
 

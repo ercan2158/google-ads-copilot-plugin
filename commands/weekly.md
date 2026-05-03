@@ -6,9 +6,11 @@ argument-hint: (no arguments)
 # /google-ads-copilot:weekly
 
 Run as the **manager** agent. Load **gaql**,
-**account-audit** (focus: spend, search terms, creative, disapprovals),
-**search-term-mining**, **budget-management**, **change-execution**,
-**explain-to-beginner**.
+**account-audit** (focus: sections 1, 2-light, 3-light, 4, 5, 6 — spend,
+conversion-tracking-since-last-week, smart-bidding-since-last-week,
+search terms, creative, disapprovals + URL liveness), **conversion-health**
+(light), **smart-bidding** (light), **search-term-mining**,
+**budget-management**, **change-execution**, **explain-to-beginner**.
 
 ## Steps
 
