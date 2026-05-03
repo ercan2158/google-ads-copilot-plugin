@@ -110,6 +110,10 @@ Five gates between any read-only command and a live mutation:
 5. **Append-only change-log.** Every applied operation = one JSON line in
    `workspace/change-log/<date>.jsonl`. Easy to audit, never overwrites.
 
+The `bin/ga` helper has an offline test suite (`bin/test-ga.sh`, 11 mocked
+assertions) that runs as part of `bin/setup` — verifies URL construction,
+header injection, and error paths without touching the live API.
+
 ## Daily use
 
 ```bash
@@ -137,6 +141,13 @@ account for the session. Run any command from anywhere inside the project.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Trademark notice
+
+Not affiliated with or endorsed by Google. "Google Ads" is a trademark of
+Google LLC. This plugin is an independent Claude Code integration that
+calls the public Google Ads API on the operator's behalf using their own
+credentials.
 
 ## Architecture
 
