@@ -1,15 +1,15 @@
 ---
-name: ads-account-audit
+name: account-audit
 description: Audit templates for daily, weekly, monthly, and bootstrap reviews. Section structure, query plan, and severity rubric.
 ---
 
-# ads-account-audit
+# account-audit
 
 Audit sections, in priority order:
 
-1. **Spend & pacing** — actual vs. expected at this point in the month, by campaign. Use budget pacing query from `googleads-gaql`.
+1. **Spend & pacing** — actual vs. expected at this point in the month, by campaign. Use budget pacing query from `gaql`.
 2. **Conversion health** — total conv last period vs. prior, conversion-action statuses (any "removed but still referenced"?). Conv-action query from gaql skill.
-3. **Search terms** — full mining via `ads-search-term-mining` skill.
+3. **Search terms** — full mining via `search-term-mining` skill.
 4. **Creative** — RSA asset performance via gaql skill; flag LOW assets.
 5. **Disapprovals** — any disapproved ads.
 6. **Structure sanity** — campaign count, ad-group count, keyword count per campaign. Flag campaigns with > 50 keywords (Google's recommended max for Search) or < 3 ads (no A/B coverage).

@@ -5,19 +5,19 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:weekly
 
-Run as the **ads-manager** agent. Load **googleads-gaql**,
-**ads-account-audit** (focus: spend, search terms, creative, disapprovals),
-**ads-search-term-mining**, **ads-budget-management**, **ads-change-execution**,
-**ads-explain-to-beginner**.
+Run as the **manager** agent. Load **gaql**,
+**account-audit** (focus: spend, search terms, creative, disapprovals),
+**search-term-mining**, **budget-management**, **change-execution**,
+**explain-to-beginner**.
 
 ## Steps
 
 1. Bind to workspace.
 2. Run focused audit (sections 1, 3, 4, 5 only — see audit skill).
 3. If search terms warrant: draft a `negatives` proposal per
-   ads-search-term-mining + ads-change-execution.
+   search-term-mining + change-execution.
 4. If budget pacing warrants: draft a `budget` proposal per
-   ads-budget-management + ads-change-execution.
+   budget-management + change-execution.
 5. Print chat:
    - TL;DR (max 4 lines)
    - Numbers (max 5 lines)

@@ -5,13 +5,13 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:daily
 
-Run as the **ads-manager** agent. Load the **googleads-gaql** and
-**ads-explain-to-beginner** skills.
+Run as the **manager** agent. Load the **gaql** and
+**explain-to-beginner** skills.
 
 ## Steps
 
 1. Bind to the workspace (read `workspace.json` + `context/*.md`).
-2. Run these reads via the ga helper (see googleads-gaql skill):
+2. Run these reads via the ga helper (see gaql skill):
    - Last-24h spend + conversions per campaign
    - Disapproved ads
    - Flatlined campaigns over the last 7 days

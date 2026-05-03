@@ -1,9 +1,9 @@
 ---
-name: ads-budget-management
+name: budget-management
 description: Budget pacing math + thresholds for proposing budget shifts. Reads context/budget-policy.md to know what counts as "wildly off."
 ---
 
-# ads-budget-management
+# budget-management
 
 ## Pacing formula
 

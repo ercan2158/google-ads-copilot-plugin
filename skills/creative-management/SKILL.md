@@ -1,14 +1,14 @@
 ---
-name: ads-creative-management
+name: creative-management
 description: Read RSA asset performance, identify weak assets, draft replacements. Inputs: context/icp.md, context/product-positioning.md.
 ---
 
-# ads-creative-management
+# creative-management
 
 ## Read
 
 Run the "Responsive search ad asset performance" query from
-**googleads-gaql**. Filter to `performance_label IN ('LOW')`.
+**gaql**. Filter to `performance_label IN ('LOW')`.
 
 ## Decide
 

@@ -1,9 +1,9 @@
 ---
-name: ads-search-term-mining
+name: search-term-mining
 description: Heuristics for turning a 30-day search-terms report into a vetted negative-keyword proposal. Loaded by /google-ads-copilot:search-terms and /google-ads-copilot:weekly.
 ---
 
-# ads-search-term-mining
+# search-term-mining
 
 Goal: identify search queries that triggered the ads, spent money, and
 returned nothing — and propose them as negative keywords at the right match
@@ -12,7 +12,7 @@ type, scoped to the right campaign.
 ## Pull data
 
 Run the "Last 30d search terms with low/no conversion" query from the
-**googleads-gaql** skill.
+**gaql** skill.
 
 ## Classify each row
 
@@ -49,7 +49,7 @@ v1, do per-campaign).
 
 ## Draft the proposal
 
-Use `ads-change-execution` proposal format. `kind: "negatives"`,
+Use `change-execution` proposal format. `kind: "negatives"`,
 `method: "POST"`, `endpoint: "/v23/customers/<id>/campaignCriteria:mutate"`.
 
 Each operation:

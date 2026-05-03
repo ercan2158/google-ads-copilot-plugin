@@ -5,7 +5,7 @@ argument-hint: <term-or-concept>  e.g. /google-ads-copilot:explain impression sh
 
 # /google-ads-copilot:explain
 
-Run as **ads-manager**. Load **ads-explain-to-beginner**.
+Run as **manager**. Load **explain-to-beginner**.
 
 ## Steps
 

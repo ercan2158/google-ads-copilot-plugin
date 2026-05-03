@@ -5,8 +5,8 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:search-terms
 
-Run as the **ads-manager** agent. Load **googleads-gaql**,
-**ads-search-term-mining**, **ads-change-execution**, **ads-explain-to-beginner**.
+Run as the **manager** agent. Load **gaql**,
+**search-term-mining**, **change-execution**, **explain-to-beginner**.
 
 ## Steps
 

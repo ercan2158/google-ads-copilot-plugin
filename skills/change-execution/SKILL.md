@@ -1,9 +1,9 @@
 ---
-name: ads-change-execution
+name: change-execution
 description: Proposal protocol. Loaded any time the agent considers a mutation. Defines the proposal-file format, the /google-ads-copilot:apply contract, the change-log line shape, and the five safety gates between intent and account.
 ---
 
-# ads-change-execution
+# change-execution
 
 Mutations never go straight to the account. The agent drafts a proposal
 file; the operator runs `/google-ads-copilot:apply <id>`; and only `/google-ads-copilot:apply` calls

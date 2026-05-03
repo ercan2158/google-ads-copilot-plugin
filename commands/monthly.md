@@ -5,10 +5,10 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:monthly
 
-Run as **ads-manager**. Load **googleads-gaql**, **ads-account-audit**
-(full 8-section), **ads-search-term-mining**, **ads-budget-management**,
-**ads-creative-management**, **ads-change-execution**,
-**ads-explain-to-beginner**.
+Run as **manager**. Load **gaql**, **account-audit**
+(full 8-section), **search-term-mining**, **budget-management**,
+**creative-management**, **change-execution**,
+**explain-to-beginner**.
 
 ## Steps
 

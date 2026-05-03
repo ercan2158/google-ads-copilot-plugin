@@ -5,7 +5,7 @@ argument-hint: <proposal-id>  e.g. /google-ads-copilot:apply 2026-04-30-negative
 
 # /google-ads-copilot:apply
 
-Run as the **ads-manager** agent. Load the **ads-change-execution** skill.
+Run as the **manager** agent. Load the **change-execution** skill.
 
 ## Required argument
 
@@ -22,7 +22,7 @@ Available pending proposals:
 
 ## Steps
 
-Follow the `/google-ads-copilot:apply` contract in the **ads-change-execution** skill
+Follow the `/google-ads-copilot:apply` contract in the **change-execution** skill
 verbatim. Specifically:
 
 1. Read `workspace/proposals/$1.md`. Extract the last fenced ```json block.
@@ -40,5 +40,5 @@ verbatim. Specifically:
 ## Plain-English chat output rule
 
 Every step that surfaces something to the operator follows
-**ads-explain-to-beginner**: TL;DR first, jargon translated on first use,
+**explain-to-beginner**: TL;DR first, jargon translated on first use,
 units on numbers.

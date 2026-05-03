@@ -5,7 +5,7 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:bootstrap
 
-Run as **ads-manager**. Load every skill the audit needs (gaql, account-audit
+Run as **manager**. Load every skill the audit needs (gaql, account-audit
 full, search-term-mining, budget-management, creative-management,
 explain-to-beginner). Do NOT load change-execution — bootstrap doesn't draft
 proposals; it produces a plan for the operator to consider.
@@ -117,7 +117,7 @@ Then proceed to Stage B with the just-created workspace.
 ## Stage B — Deep audit
 
 1. Bind to workspace.
-2. Run the full 8-section audit per ads-account-audit.
+2. Run the full 8-section audit per account-audit.
 3. Write `workspace/audit/$(date +%Y-%m-%d)-bootstrap.md` with all 8 sections.
 4. Write `workspace/refactors/$(date +%Y-%m-%d)-phased-plan.md` containing:
    - Phase 0 (now): things the operator should do manually outside this plugin

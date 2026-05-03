@@ -5,8 +5,8 @@ argument-hint: (no arguments)
 
 # /google-ads-copilot:creative
 
-Run as **ads-manager**. Load **googleads-gaql**, **ads-creative-management**,
-**ads-change-execution**, **ads-explain-to-beginner**.
+Run as **manager**. Load **gaql**, **creative-management**,
+**change-execution**, **explain-to-beginner**.
 
 ## Steps
 

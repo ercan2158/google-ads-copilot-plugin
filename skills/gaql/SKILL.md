@@ -1,14 +1,14 @@
 ---
-name: googleads-gaql
+name: gaql
 description: GAQL cookbook for read queries via the bundled ga helper. Use whenever you need to read account data — campaign performance, search terms, conversion paths, ad assets, account-level diagnostics.
 ---
 
-# googleads-gaql
+# gaql
 
 Run all reads through `"${CLAUDE_PLUGIN_ROOT}/bin/ga" query "<GAQL>"`. Output is the raw Google Ads
 API response — a JSON object with a top-level `results` array on success,
 or a top-level `error` object on failure. For mutations use
-`ads-change-execution`.
+`change-execution`.
 
 ## Last 24h spend + conversions per campaign
 
