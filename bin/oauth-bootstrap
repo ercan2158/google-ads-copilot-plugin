@@ -25,6 +25,10 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
   exit 1
 fi
 
+# Lock down secrets-file perms before any read/write — prevents a window
+# where freshly-written tokens sit world/group-readable.
+chmod 600 "$SECRETS_FILE"
+
 client_id=$(grep '^CLIENT_ID=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
 client_secret=$(grep '^CLIENT_SECRET=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
 if [[ -z "$client_id" || -z "$client_secret" ]]; then
@@ -40,20 +44,28 @@ fi
 redirect_uri="http://127.0.0.1:${PORT}"
 state=$(openssl rand -hex 12 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(12))')
 
-# URL-encode scope and redirect_uri the way Google expects
-auth_url=$(python3 -c "
-import urllib.parse
+# URL-encode scope and redirect_uri the way Google expects.
+# Pass values via env vars (NOT shell-interpolated into the Python source)
+# so a quote in any of them can't break out and execute Python.
+auth_url=$(
+  CLIENT_ID="$client_id" \
+  REDIRECT_URI="$redirect_uri" \
+  OAUTH_SCOPE="$SCOPE" \
+  OAUTH_STATE="$state" \
+  python3 -c "
+import urllib.parse, os
 params = {
   'response_type': 'code',
   'access_type':   'offline',
   'prompt':        'consent',
-  'client_id':     '$client_id',
-  'redirect_uri':  '$redirect_uri',
-  'scope':         '$SCOPE',
-  'state':         '$state',
+  'client_id':     os.environ['CLIENT_ID'],
+  'redirect_uri':  os.environ['REDIRECT_URI'],
+  'scope':         os.environ['OAUTH_SCOPE'],
+  'state':         os.environ['OAUTH_STATE'],
 }
 print('https://accounts.google.com/o/oauth2/v2/auth?' + urllib.parse.urlencode(params))
-")
+"
+)
 
 cat <<EOF
 [oauth-bootstrap] Open this URL in your browser:
@@ -121,13 +133,15 @@ if [[ -z "$refresh_token" ]]; then
   exit 1
 fi
 
-# Update or append REFRESH_TOKEN in the secrets file
+# Update or append REFRESH_TOKEN in the secrets file. Pass values via env
+# vars to avoid shell-interpolation injection if the token contains quotes.
 if grep -q '^REFRESH_TOKEN=' "$SECRETS_FILE"; then
-  # Use a sed-portable replacement (creates a backup then removes it)
+  SECRETS_FILE_PATH="$SECRETS_FILE" \
+  REFRESH_TOKEN_VALUE="$refresh_token" \
   python3 -c "
-import sys
-p = '$SECRETS_FILE'
-new_line = 'REFRESH_TOKEN=$refresh_token'
+import os
+p = os.environ['SECRETS_FILE_PATH']
+new_line = 'REFRESH_TOKEN=' + os.environ['REFRESH_TOKEN_VALUE']
 with open(p) as f:
     lines = f.readlines()
 with open(p, 'w') as f:

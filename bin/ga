@@ -97,6 +97,17 @@ load_context() {
     _GA_CUSTOMER_ID="${GA_CUSTOMER_ID:-}"
     _GA_MGR_ID="${GA_MANAGER_CUSTOMER_ID:-}"
   fi
+  # Validate IDs are numeric (defense-in-depth: an attacker-controlled value
+  # containing CRLF could inject curl -H headers; one containing / could alter
+  # the URL path). Google Ads customer IDs are always 10-digit numeric strings.
+  if [[ -n "$_GA_CUSTOMER_ID" && ! "$_GA_CUSTOMER_ID" =~ ^[0-9]+$ ]]; then
+    echo "ga: invalid customer_id (must be numeric): $_GA_CUSTOMER_ID" >&2
+    exit 1
+  fi
+  if [[ -n "$_GA_MGR_ID" && ! "$_GA_MGR_ID" =~ ^[0-9]+$ ]]; then
+    echo "ga: invalid manager_customer_id (must be numeric): $_GA_MGR_ID" >&2
+    exit 1
+  fi
   _GA_DEV_TOKEN=$("$SECRETS_HELPER" google-ads DEVELOPER_TOKEN)
   _GA_ACCESS_TOKEN=$(get_access_token)
 }

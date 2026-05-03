@@ -54,6 +54,15 @@ If missing, run the interactive scaffold:
 6. **Pick a project root.** Ask "Where should `workspace.json` live? (default:
    the current directory `$(pwd)`)". Use the answer as `<PROJECT_ROOT>`.
 
+   **Guardrails — refuse and re-ask if the chosen path:**
+   - Starts with `/etc`, `/usr`, `/bin`, `/sbin`, `/var`, `/opt`, `/System`, `/Library`
+   - Lives inside `~/.ssh`, `~/.config/secrets`, `~/.aws`, `~/.gnupg`, `~/.kube`
+   - Contains `..` segments (no path-traversal)
+   - Is not writable, or is outside `$HOME` entirely
+
+   Brief explanation when refusing: "This plugin shouldn't write outside
+   your projects/code folders — pick a path inside your home directory."
+
 7. **Write `workspace.json`** at `<PROJECT_ROOT>/workspace.json`:
    ```json
    {

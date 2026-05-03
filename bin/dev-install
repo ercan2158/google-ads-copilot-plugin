@@ -11,6 +11,17 @@ SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
 step() { printf '\n[install] %s\n' "$*"; }
 fail() { printf '[install] FAILED — %s\n' "$*" >&2; exit 1; }
 
+# Same redaction as bin/setup — structured Google Ads errors only,
+# truncate everything else to 200 chars.
+print_safe_error() {
+  if echo "$1" | jq -e '.error | type == "object"' >/dev/null 2>&1; then
+    echo "$1" | jq '.error | {code, message, status, details}' >&2
+  else
+    echo "$1" | head -c 200 >&2
+    echo "" >&2
+  fi
+}
+
 # 1. Sanity-check secrets file ------------------------------------------------
 step "checking $SECRETS_FILE"
 if [[ ! -f "$SECRETS_FILE" ]]; then
@@ -53,14 +64,14 @@ claude plugin install ads-copilot@ads-copilot 2>&1 | tail -1
 # 4. Live smoke test ----------------------------------------------------------
 step "live smoke test: bin/ga proxy GET /v23/customers:listAccessibleCustomers"
 out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
-  echo "$out" >&2
+  print_safe_error "$out"
   fail "ga proxy errored. Likely fixes:
   - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN was revoked
   - Re-check $SECRETS_FILE has all 4 keys"
 }
 
 if echo "$out" | jq -e '.error // empty' >/dev/null 2>&1; then
-  echo "$out" | jq . >&2
+  print_safe_error "$out"
   fail "Google Ads returned an error. Common causes:
   - DEVELOPER_TOKEN_PROHIBITED — your dev token's Cloud project must
     match the OAuth client's Cloud project
