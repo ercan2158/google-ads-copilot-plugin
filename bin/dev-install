@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# bin/install — register the plugin with Claude Code (via marketplace + install)
-# and verify connectivity against the Google Ads API. Idempotent — safe to
-# re-run any time.
+# bin/dev-install — register the plugin with Claude Code via local marketplace
+# (developer workflow only — end users use bin/setup instead). Verifies
+# connectivity against the Google Ads API. Idempotent — safe to re-run.
 
 set -euo pipefail
 

@@ -87,10 +87,12 @@ print(captured.get('qs',''))
 PYEOF
 )
 
-# Parse the query string for code + state
-parsed=$(python3 -c "
-import urllib.parse, sys, json
-q = urllib.parse.parse_qs('''$qs''')
+# Parse the query string for code + state.
+# Pass $qs via env var (NOT shell-interpolated into the Python string) so a
+# crafted callback can't break out of the quotes and execute arbitrary Python.
+parsed=$(OAUTH_QS="$qs" python3 -c "
+import urllib.parse, os, json
+q = urllib.parse.parse_qs(os.environ['OAUTH_QS'])
 print(json.dumps({k: v[0] for k, v in q.items()}))
 ")
 code=$(echo "$parsed" | jq -re '.code')
@@ -141,4 +143,4 @@ fi
 chmod 600 "$SECRETS_FILE"
 
 echo "[oauth-bootstrap] Saved REFRESH_TOKEN to $SECRETS_FILE"
-echo "[oauth-bootstrap] Done. Run \`bin/install\` to verify connectivity."
+echo "[oauth-bootstrap] Done. Run \`bin/setup\` to verify connectivity."
