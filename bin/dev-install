@@ -42,21 +42,7 @@ step "secrets OK (DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN prese
 step "running bin/test-ga.sh"
 "$REPO_DIR/bin/test-ga.sh"
 
-# 3. Symlink ads-ga onto PATH (so skills/commands can call it from any cwd) --
-LOCAL_BIN="$HOME/.local/bin"
-mkdir -p "$LOCAL_BIN"
-ln -sf "$REPO_DIR/bin/ga" "$LOCAL_BIN/ads-ga"
-step "symlinked $LOCAL_BIN/ads-ga -> $REPO_DIR/bin/ga"
-case ":$PATH:" in
-  *":$LOCAL_BIN:"*) ;;
-  *) echo "[install] WARNING: $LOCAL_BIN is not on \$PATH — add it to your shell rc:" >&2
-     echo "           export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2 ;;
-esac
-if ! command -v ads-ga >/dev/null; then
-  fail "ads-ga not on PATH after symlink — fix \$PATH and re-run"
-fi
-
-# 4. Register the marketplace + install the plugin (both idempotent) ---------
+# 3. Register the marketplace + install the plugin (both idempotent) ---------
 step "registering Claude Code marketplace + plugin (idempotent)"
 if ! command -v claude >/dev/null; then
   fail "\`claude\` CLI not on PATH. Install Claude Code first."
@@ -64,9 +50,9 @@ fi
 claude plugin marketplace add "$REPO_DIR" 2>&1 | tail -1
 claude plugin install ads-copilot@ads-copilot 2>&1 | tail -1
 
-# 5. Live smoke test ----------------------------------------------------------
-step "live smoke test: ads-ga proxy GET /v23/customers:listAccessibleCustomers"
-out=$(ads-ga proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
+# 4. Live smoke test ----------------------------------------------------------
+step "live smoke test: bin/ga proxy GET /v23/customers:listAccessibleCustomers"
+out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
   echo "$out" >&2
   fail "ga proxy errored. Likely fixes:
   - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN was revoked

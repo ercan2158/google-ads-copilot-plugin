@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# bin/setup — one-time per-machine setup for ads-copilot.
+# Verifies prereqs, walks through OAuth, runs a live smoke test against
+# Google Ads. Idempotent — safe to re-run.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
+
+step() { printf '\n[setup] %s\n' "$*"; }
+fail() { printf '[setup] FAILED — %s\n' "$*" >&2; exit 1; }
+
+# 1. Prereq check ------------------------------------------------------------
+step "checking prereqs (jq, python3, curl)"
+for tool in jq python3 curl; do
+  command -v "$tool" >/dev/null || fail "missing prereq: $tool (install it, then re-run)"
+done
+
+# 2. Secrets file check (with helpful first-run message) ---------------------
+if [[ ! -f "$SECRETS_FILE" ]]; then
+  cat <<EOF
+
+[setup] $SECRETS_FILE not found.
+
+Before continuing you need three things from Google:
+
+  1. A Google Ads developer token
+     Request at: https://ads.google.com/aw/apicenter
+     (Approval can take days — start this first.)
+
+  2. A Google Cloud project with the Google Ads API enabled.
+
+  3. An OAuth 2.0 Client ID/Secret (Desktop type) in that Cloud project.
+
+Once you have those, create the secrets file:
+
+  mkdir -p "$(dirname "$SECRETS_FILE")"
+  chmod 700 "$(dirname "$SECRETS_FILE")"
+  cat > "$SECRETS_FILE" <<'KEYS'
+  DEVELOPER_TOKEN=<from API Center>
+  CLIENT_ID=<your OAuth 2.0 Desktop client>
+  CLIENT_SECRET=<same OAuth client>
+  KEYS
+  chmod 600 "$SECRETS_FILE"
+
+Then re-run: bin/setup
+EOF
+  exit 1
+fi
+
+# 3. Validate the three required keys are present ----------------------------
+missing=()
+for key in DEVELOPER_TOKEN CLIENT_ID CLIENT_SECRET; do
+  grep -q "^${key}=" "$SECRETS_FILE" || missing+=( "$key" )
+done
+if (( ${#missing[@]} > 0 )); then
+  fail "missing keys in $SECRETS_FILE: ${missing[*]}"
+fi
+
+# 4. Run OAuth bootstrap if REFRESH_TOKEN missing ----------------------------
+if ! grep -q "^REFRESH_TOKEN=" "$SECRETS_FILE"; then
+  step "REFRESH_TOKEN missing — running bin/oauth-bootstrap"
+  "$REPO_DIR/bin/oauth-bootstrap"
+else
+  step "REFRESH_TOKEN already present"
+fi
+
+# 5. Mocked unit tests -------------------------------------------------------
+step "running mocked tests (bin/test-ga.sh)"
+"$REPO_DIR/bin/test-ga.sh"
+
+# 6. Live smoke test ---------------------------------------------------------
+step "live smoke test: listAccessibleCustomers"
+out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
+  echo "$out" >&2
+  fail "ga errored. Likely fixes:
+  - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN was revoked
+  - Check that your DEVELOPER_TOKEN's Cloud project matches your OAuth client's"
+}
+
+if echo "$out" | jq -e '.error // empty' >/dev/null 2>&1; then
+  echo "$out" | jq . >&2
+  fail "Google Ads returned an error. Common causes:
+  - DEVELOPER_TOKEN_PROHIBITED — token's Cloud project must match OAuth client's
+  - PERMISSION_DENIED — dev-token approval level (Test/Basic/Standard) gap
+  - INVALID_DEVELOPER_TOKEN — token typo or wrong API Center"
+fi
+
+step "OK. Accessible customers:"
+echo "$out" | jq .
+
+cat <<'EOF'
+
+[setup] Done. Per-machine setup complete.
+
+Next: cd into a SaaS project folder and run:
+        claude
+        > /ads-bootstrap
+
+  The first run scaffolds workspace.json + context/ stubs interactively,
+  then runs a deep audit.
+EOF
