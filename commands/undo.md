@@ -29,27 +29,14 @@ Recently applied proposals (last 7 days):
 2. **Locate the change-log entries** for `proposal_id = $1` across
    `workspace/change-log/*.jsonl`. Each entry has the response from
    Google (resource names, etc.).
-3. **Determine invertibility.** Look up the kind in
-   `references/apply-contract.md`'s "Per-kind inverse rules" table:
-
-   | kind                    | invertible? | how                                                                |
-   |---|---|---|
-   | `negatives`             | yes         | `remove` on the criterion resource names from the response         |
-   | `budget`                | yes         | `update` `amountMicros` back to old value (read from original `metadata.previous_amount` if present, else from change-log diff context) |
-   | `creative-pause`        | yes (best-effort) | re-create the asset link with same `adGroupAd`+`asset`+`fieldType` |
-   | `creative-add`          | yes         | `remove` the link resource names from the response                 |
-   | `assets-add`            | yes (cascade-aware) | `remove` op on `assets:mutate`. WARN if asset is also linked elsewhere; suggest `assets-unlink` instead. |
-   | `assets-link`           | yes         | `remove` on the customerAsset/campaignAsset link resource names    |
-   | `assets-unlink`         | yes         | re-create the link with same `asset`+`fieldType`                   |
-   | `keyword-add`           | yes         | `remove` on the criterion resource names                           |
-   | `keyword-pause`         | yes         | `update` `status: ENABLED` + `updateMask: status` on the resource  |
-   | `campaign-toggle`       | yes         | `update` flipping `status` back                                    |
-   | `ad-toggle`             | yes         | `update` flipping `status` back                                    |
-   | `bid-adjust`            | yes         | If `metadata.previous_modifier` was null: `remove` the criterion. Else `update` `bidModifier` back to old value. |
-   | `conversion-action-mod` | yes (best-effort) | `update` fields back to their pre-change values from the original proposal's `metadata.previous_*` |
-   | `customer-match-upload` | **NO**       | Refuse — Google's offline matching can't be cleanly reversed. Print the manual scrub recipe from `examples/customer-match.md`. |
-   | `recommendation-apply`  | **NO**       | Refuse — Google's apply may have spawned downstream entities (assets, links, criteria). Print the spawned resource names from the change-log; the operator drafts kind-specific undos against each. |
-   | `recommendation-dismiss`| n/a          | Recs naturally resurface; no inverse needed.                       |
+3. **Determine invertibility.** Look up the kind in the canonical
+   per-kind inverse rules table at
+   [`skills/change-execution/references/apply-contract.md`](../skills/change-execution/references/apply-contract.md#per-kind-inverse-rules-canonical).
+   Two kinds are non-invertible (`customer-match-upload`,
+   `recommendation-apply`); for those, follow the table's refusal
+   recipe and stop. For all others, the table specifies the inverse op
+   shape (typically a `remove` against the original response's resource
+   names, or an `update` flipping status / restoring previous values).
 
 4. **For invertible kinds**: draft a new proposal at
    `workspace/proposals/<today>-undo-of-<original-id>.md`. The new

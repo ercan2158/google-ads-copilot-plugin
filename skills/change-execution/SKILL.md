@@ -1,6 +1,6 @@
 ---
 name: change-execution
-description: Universal mutation protocol. Loaded any time the agent considers a Google Ads mutation — any kind, any endpoint. Defines the proposal-file envelope, the five safety gates, the recipe for adding new kinds, and a documented table of 15 kinds (negatives, budget, creative-add/pause, assets-add/link/unlink, keyword-add/pause, campaign-toggle, ad-toggle, bid-adjust, conversion-action-mod, customer-match-upload, recommendation-apply/dismiss) with drafter heuristics. The /google-ads-copilot:apply pseudo-code lives at references/apply-contract.md.
+description: Universal mutation protocol. Loaded any time the agent considers a Google Ads mutation — any kind, any endpoint. Defines the proposal-file envelope, the five safety gates, the recipe for adding new kinds, and a documented table of 15 kinds covering search-term mining, budget shifts, creative refresh, asset extensions (sitelinks/callouts/snippets), keyword management, campaign/ad toggles, bid adjustments, conversion-action edits, Customer Match uploads, and Google's own recommendation apply/dismiss. Apply pseudo-code, body-construction rules, and per-kind inverse rules for /undo live at references/apply-contract.md.
 ---
 
 # change-execution
@@ -23,20 +23,39 @@ The gates apply to **any** kind. They don't care about the endpoint or operation
 
 **`bin/ga proxy` is fully generic** — there's no API-level restriction. Any Google Ads REST endpoint can be the target of a proposal. The kinds table below documents kinds with thoroughly-tested drafter heuristics; new kinds extend the table without changing the envelope or the safety gates.
 
-The envelope:
+The envelope (one of two shapes depending on the endpoint):
 
 ```json
+// Shape A — batch :mutate endpoints (most kinds)
 {
   "proposal_id": "<YYYY-MM-DD>-<kind>-<seq>",
   "kind": "<documented kind | new kind>",
   "account_id": "<from workspace.json>",
-  "method": "POST | PATCH | DELETE",
-  "endpoint": "<any /v23/ Google Ads REST path>",
+  "method": "POST",
+  "endpoint": "/v23/customers/<id>/<resource>:mutate",
   "validate_first": true,
-  "operations": [...],
-  "metadata": { "<optional kind-specific notes>": "..." }
+  "operations": [ { ...op... }, { ...op... } ],
+  "metadata": { ... }
+}
+
+// Shape B — non-batch endpoints (single-object :create, :apply, :run, :dismiss)
+{
+  "proposal_id": "...",
+  "kind": "...",
+  "account_id": "...",
+  "method": "POST",
+  "endpoint": "/v23/customers/<id>/offlineUserDataJobs:create",
+  "validate_first": true,
+  "body": { ...request body root... },
+  "metadata": { ... }
 }
 ```
+
+Apply constructs the request body per the rule documented at
+[`references/apply-contract.md`](references/apply-contract.md#request-body-construction):
+`operations[]` → wrapped as `{ "operations": [...], "validateOnly": ... }`;
+`body` → passed through with `validateOnly` injected at root if
+applicable; neither → empty body (for parameterless `:run` etc.).
 
 For multi-step kinds (e.g. `assets-add` → `assets-link`, or
 `customer-match-upload`'s 4-step userList flow), draft TWO OR MORE paired
@@ -89,13 +108,13 @@ The fenced ```json block at the bottom is the **executable** part.
 | kind | drafted by | method + endpoint | op shape | heuristic / example |
 |---|---|---|---|---|
 | `negatives` | `/search-terms`, `/weekly` | POST `campaignCriteria:mutate` | `create` negative keyword | `search-term-mining` |
-| `budget` | `/budgets`, `/weekly`, `/monthly` | POST `campaignBudgets:mutate` | `update` `amountMicros` + `updateMask: amountMicros` | `budget-management` |
+| `budget` | `/budgets`, `/weekly`, `/monthly`, `/recommendations` | POST `campaignBudgets:mutate` | `update` `amountMicros` + `updateMask: amountMicros` | `budget-management` |
 | `creative-pause` | `/creative`, `/monthly` | POST `adGroupAdAssets:mutate` | `remove` link `resourceName` | `creative-management` |
-| `creative-add` | `/creative`, `/monthly` | POST `adGroupAdAssets:mutate` | `create` link with `adGroupAd`, `asset`, `fieldType` | `creative-management` + `examples/rsa-headlines.md` |
+| `creative-add` | `/creative`, `/monthly`, `/recommendations` | POST `adGroupAdAssets:mutate` | `create` link with `adGroupAd`, `asset`, `fieldType` | `creative-management` + [`creative-management/examples/rsa-headlines.md`](../creative-management/examples/rsa-headlines.md) |
 | `assets-add` | `/recommendations`, `/monthly` | POST `assets:mutate` | `create` sitelink/callout/snippet/image asset | [`examples/assets-flow.md`](examples/assets-flow.md) |
 | `assets-link` | `/recommendations`, `/monthly` | POST `customerAssets:mutate` *or* `campaignAssets:mutate` | `create` link with `asset`, `fieldType` | paired with `assets-add` — see [`examples/assets-flow.md`](examples/assets-flow.md) |
 | `assets-unlink` | `/recommendations`, `/monthly` | POST `customerAssets:mutate` *or* `campaignAssets:mutate` | `remove` link `resourceName` | when an extension consistently underperforms |
-| `keyword-add` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `create` `keyword: { text, matchType }` with `cpcBidMicros` | [`examples/keyword-management.md`](examples/keyword-management.md) |
+| `keyword-add` | `/weekly`, `/monthly`, `/recommendations` | POST `adGroupCriteria:mutate` | `create` `keyword: { text, matchType }` with `cpcBidMicros` | [`examples/keyword-management.md`](examples/keyword-management.md) |
 | `keyword-pause` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `update` `status: PAUSED` + `updateMask: status` | [`examples/keyword-management.md`](examples/keyword-management.md) |
 | `campaign-toggle` | (operator request) | POST `campaigns:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | one campaign per proposal; explicit operator intent |
 | `ad-toggle` | `/creative`, `/monthly` | POST `adGroupAds:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | when an individual ad consistently underperforms |
@@ -116,4 +135,12 @@ loading this skill don't need it; only `/google-ads-copilot:apply` does.
 
 ## Rollback / undo
 
-Most kinds are invertible — given an applied proposal in `workspace/proposals/applied/` and its change-log entry, the inverse can be drafted as a new proposal. The `/google-ads-copilot:undo <proposal-id>` command does this; see [`references/apply-contract.md`](references/apply-contract.md) for the per-kind inverse rules. Non-invertible kinds (`recommendation-apply`, `customer-match-upload`) are flagged in the kinds table and refuse `/undo` with an explanation.
+Most kinds are invertible — given an applied proposal in
+`workspace/proposals/applied/` and its change-log entry, the inverse
+can be drafted as a new proposal. The `/google-ads-copilot:undo
+<proposal-id>` command does this; the canonical per-kind inverse rules
+live at
+[`references/apply-contract.md`](references/apply-contract.md#per-kind-inverse-rules-canonical).
+Non-invertible kinds (`recommendation-apply`, `customer-match-upload`)
+are flagged in the kinds table and refuse `/undo` with an explanation
+plus a manual-recipe pointer.

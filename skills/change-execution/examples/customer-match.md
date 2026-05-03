@@ -68,6 +68,12 @@ the CSV. Document this in the proposal's TL;DR.
 
 ## Proposal B: create the offline job
 
+`offlineUserDataJobs:create` is a **non-batch** endpoint — it takes a
+single `job` object at request-body root, not an `operations` array. Use
+the envelope's `body` field instead of `operations[]`. (See
+[`references/apply-contract.md`](../references/apply-contract.md#request-body-construction)
+for the operations-vs-body rule.)
+
 `workspace/proposals/2026-05-03-cm-job-create-01.md`
 
 ```json
@@ -78,16 +84,14 @@ the CSV. Document this in the proposal's TL;DR.
   "method": "POST",
   "endpoint": "/v23/customers/8191097521/offlineUserDataJobs:create",
   "validate_first": true,
-  "operations": [
-    {
-      "job": {
-        "type": "CUSTOMER_MATCH_USER_LIST",
-        "customerMatchUserListMetadata": {
-          "userList": "<resourceName from proposal A>"
-        }
+  "body": {
+    "job": {
+      "type": "CUSTOMER_MATCH_USER_LIST",
+      "customerMatchUserListMetadata": {
+        "userList": "<resourceName from proposal A>"
       }
     }
-  ],
+  },
   "metadata": {
     "step": "2-of-4",
     "depends_on": "2026-05-03-cm-list-create-01",
@@ -134,6 +138,11 @@ For lists > 100k, split into multiple `:addOperations` proposals
 
 ## Proposal D: run the job
 
+`offlineUserDataJobs/<id>:run` takes no body — the apply contract sends
+an empty request when neither `operations` nor `body` is set in the
+envelope. `validate_first: false` because `:run` doesn't accept
+`validateOnly`.
+
 `workspace/proposals/2026-05-03-cm-job-run-01.md`
 
 ```json
@@ -144,7 +153,6 @@ For lists > 100k, split into multiple `:addOperations` proposals
   "method": "POST",
   "endpoint": "/v23/customers/8191097521/offlineUserDataJobs/<job_id>:run",
   "validate_first": false,
-  "operations": [],
   "metadata": {
     "step": "4-of-4",
     "depends_on": "2026-05-03-cm-job-add-01",

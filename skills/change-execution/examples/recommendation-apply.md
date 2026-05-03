@@ -60,6 +60,21 @@ context/product-positioning.md value props.
 this kind. Surface the irreversibility explicitly in the proposal's
 TL;DR — this gate is about the operator knowing what's happening.
 
+## API-version note on parameter shapes
+
+The `<type>` field name on each operation (e.g. `calloutAsset` above)
+must match Google's current `ApplyRecommendationOperation` schema for
+the API version in use. Field names have shifted across versions —
+some past versions used names like `callExtension` vs `callAsset`,
+`textAd` vs `responsiveSearchAd`. Verify the exact field name for your
+target version:
+
+> https://developers.google.com/google-ads/api/reference/rpc/v23/ApplyRecommendationOperation
+
+If a proposal returns `INVALID_FIELD` or `UNKNOWN_FIELD`, swap the
+operation's parameter field name to the schema's variant for the
+recommendation type. The plugin doesn't auto-correct.
+
 ## The applyParameters shape
 
 Each recommendation type has its own `<type>Parameters` field. Common ones:
