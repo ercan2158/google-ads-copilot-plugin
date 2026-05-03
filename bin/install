@@ -1,80 +1,80 @@
 #!/usr/bin/env bash
-# bin/install — register the plugin with Claude Code and verify connectivity
-# against Google Ads API (no Composio).
+# bin/install — register the plugin with Claude Code (via marketplace + install)
+# and verify connectivity against the Google Ads API. Idempotent — safe to
+# re-run any time.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PLUGIN_NAME="ads-copilot"
-TARGET="$HOME/.claude/plugins/$PLUGIN_NAME"
-
-# 1. Symlink the plugin into ~/.claude/plugins/
-mkdir -p "$HOME/.claude/plugins"
-if [[ -L "$TARGET" || -e "$TARGET" ]]; then
-  echo "[install] removing existing $TARGET"
-  rm -rf "$TARGET"
-fi
-ln -s "$REPO_DIR" "$TARGET"
-echo "[install] linked $REPO_DIR -> $TARGET"
-
-# 2. Sanity-check secrets file
 SECRETS_FILE="$HOME/.config/secrets/google-ads/credentials"
-if [[ ! -f "$SECRETS_FILE" ]]; then
-  cat <<EOF >&2
-[install] $SECRETS_FILE not found.
 
-Create it with these keys (KEY=value, one per line):
+step() { printf '\n[install] %s\n' "$*"; }
+fail() { printf '[install] FAILED — %s\n' "$*" >&2; exit 1; }
+
+# 1. Sanity-check secrets file ------------------------------------------------
+step "checking $SECRETS_FILE"
+if [[ ! -f "$SECRETS_FILE" ]]; then
+  cat >&2 <<EOF
+$SECRETS_FILE not found.
+
+Create it (chmod 600) with three keys, then run \`bin/oauth-bootstrap\`,
+then re-run this script:
+
   DEVELOPER_TOKEN=<from Google Ads API Center>
-  CLIENT_ID=<from your OAuth 2.0 Desktop client in Google Cloud Console>
+  CLIENT_ID=<your OAuth 2.0 Desktop client>
   CLIENT_SECRET=<same OAuth client>
-  REFRESH_TOKEN=<run \`bin/oauth-bootstrap\` after creating the file>
 EOF
   exit 1
 fi
+missing=()
 for key in DEVELOPER_TOKEN CLIENT_ID CLIENT_SECRET REFRESH_TOKEN; do
-  if ! grep -q "^${key}=" "$SECRETS_FILE"; then
-    echo "[install] missing $key in $SECRETS_FILE — see README/oauth-bootstrap" >&2
-    exit 1
-  fi
+  grep -q "^${key}=" "$SECRETS_FILE" || missing+=( "$key" )
 done
+if (( ${#missing[@]} > 0 )); then
+  if [[ " ${missing[*]} " == *" REFRESH_TOKEN "* && ${#missing[@]} -eq 1 ]]; then
+    fail "REFRESH_TOKEN missing — run \`bin/oauth-bootstrap\` then re-run this"
+  fi
+  fail "missing keys in $SECRETS_FILE: ${missing[*]}"
+fi
+step "secrets OK (DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN present)"
 
-# 3. Run unit tests for bin/ga
-echo "[install] running bin/test-ga.sh"
+# 2. Run unit tests -----------------------------------------------------------
+step "running bin/test-ga.sh"
 "$REPO_DIR/bin/test-ga.sh"
 
-# 4. Live smoke test via the proxy path. If you have a workspace.json in cwd,
-#    we'll use its customer/manager. Otherwise we cd into the home directory
-#    and require the user to run install from inside a workspace folder for
-#    the live test (or from anywhere if you want to skip it).
-echo "[install] live smoke test: ga proxy GET /v23/customers:listAccessibleCustomers"
+# 3. Register the marketplace + install the plugin (both idempotent) ---------
+step "registering Claude Code marketplace + plugin (idempotent)"
+if ! command -v claude >/dev/null; then
+  fail "\`claude\` CLI not on PATH. Install Claude Code first."
+fi
+claude plugin marketplace add "$REPO_DIR" 2>&1 | tail -1
+claude plugin install ads-copilot@ads-copilot 2>&1 | tail -1
+
+# 4. Live smoke test ----------------------------------------------------------
+step "live smoke test: ga proxy GET /v23/customers:listAccessibleCustomers"
 out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
-  echo "[install] FAILED — ga proxy errored:"
-  echo "$out"
-  echo
-  echo "Likely fixes:"
-  echo "  - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN is missing or revoked"
-  echo "  - Verify all 4 keys in $SECRETS_FILE: DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN"
-  exit 1
+  echo "$out" >&2
+  fail "ga proxy errored. Likely fixes:
+  - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN was revoked
+  - Re-check $SECRETS_FILE has all 4 keys"
 }
 
 if echo "$out" | jq -e '.error // empty' >/dev/null 2>&1; then
-  echo "[install] FAILED — Google Ads returned an error:"
-  echo "$out" | jq .
-  echo
-  echo "Common causes:"
-  echo "  - DEVELOPER_TOKEN_PROHIBITED — Cloud project mismatch. Your OAuth"
-  echo "    client must be in the same Cloud project as the dev token."
-  echo "  - PERMISSION_DENIED — dev token approval status (Test/Basic/Standard)"
-  echo "    may not allow access to this account."
-  echo "  - INVALID_DEVELOPER_TOKEN — token typo or wrong API Center."
-  exit 1
+  echo "$out" | jq . >&2
+  fail "Google Ads returned an error. Common causes:
+  - DEVELOPER_TOKEN_PROHIBITED — your dev token's Cloud project must
+    match the OAuth client's Cloud project
+  - PERMISSION_DENIED — dev token approval (Test/Basic/Standard) gap
+  - INVALID_DEVELOPER_TOKEN — token typo or wrong API Center"
 fi
 
-echo "[install] OK. Accessible customers:"
+step "OK. Accessible customers:"
 echo "$out" | jq .
 
 cat <<'EOF'
 
-[install] Done. Open Claude Code in any folder with a workspace.json
-          and run /ads-daily to start.
+[install] Done. RESTART Claude Code to load the plugin, then:
+            cd <a folder with a workspace.json>
+            claude
+            > /ads-daily
 EOF
