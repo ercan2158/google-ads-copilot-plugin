@@ -95,6 +95,22 @@ CI-style use.
 | `/google-ads-copilot:explain <term>` | Plain-English explainer for any Google Ads concept |
 | `/google-ads-copilot:apply <proposal-id>` | **The only mutating command.** Applies a drafted proposal |
 
+### Architecture: skills loaded per command
+
+Every command runs as the **`manager`** agent and declares which skills the agent loads. Skills compose: `gaql` and `explain-to-beginner` are foundation skills (one for reading the account, one for output style); `change-execution` is loaded only when a command might draft a mutation; `account-audit` orchestrates the multi-section reviews.
+
+| Command | Skills loaded |
+|---|---|
+| `/google-ads-copilot:bootstrap` | `gaql`, `account-audit` (full), `search-term-mining`, `budget-management`, `creative-management`, `explain-to-beginner` |
+| `/google-ads-copilot:daily` | `gaql`, `explain-to-beginner` |
+| `/google-ads-copilot:weekly` | `gaql`, `account-audit` (sections 1/3/4/5), `search-term-mining`, `budget-management`, `change-execution`, `explain-to-beginner` |
+| `/google-ads-copilot:monthly` | `gaql`, `account-audit` (full), `search-term-mining`, `budget-management`, `creative-management`, `change-execution`, `explain-to-beginner` |
+| `/google-ads-copilot:budgets` | `gaql`, `budget-management`, `change-execution`, `explain-to-beginner` |
+| `/google-ads-copilot:creative` | `gaql`, `creative-management`, `change-execution`, `explain-to-beginner` |
+| `/google-ads-copilot:search-terms` | `gaql`, `search-term-mining`, `change-execution`, `explain-to-beginner` |
+| `/google-ads-copilot:explain` | `explain-to-beginner` |
+| `/google-ads-copilot:apply` | `change-execution` (incl. `references/apply-contract.md`) |
+
 ## Safety model
 
 Five gates between any read-only command and a live mutation:
