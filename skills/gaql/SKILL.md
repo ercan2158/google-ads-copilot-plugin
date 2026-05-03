@@ -118,6 +118,62 @@ FROM conversion_action
 WHERE conversion_action.status != 'REMOVED'
 ```
 
+## Geographic performance (last 30d)
+
+```sql
+SELECT
+  geographic_view.country_criterion_id,
+  geographic_view.location_type,
+  campaign.id, campaign.name,
+  metrics.cost_micros, metrics.conversions, metrics.clicks, metrics.impressions,
+  metrics.conversions_value
+FROM geographic_view
+WHERE segments.date DURING LAST_30_DAYS
+  AND campaign.status = 'ENABLED'
+ORDER BY metrics.cost_micros DESC
+LIMIT 50
+```
+
+Useful for spotting countries/regions that are over- or under-converting
+relative to spend. Drives `bid-adjust` proposals (bid up in
+high-performing geos, bid down in low-performing ones).
+
+## Device performance (last 30d)
+
+```sql
+SELECT
+  segments.device,
+  campaign.id, campaign.name,
+  metrics.cost_micros, metrics.conversions, metrics.clicks, metrics.impressions,
+  metrics.conversions_value
+FROM campaign
+WHERE segments.date DURING LAST_30_DAYS
+  AND campaign.status = 'ENABLED'
+ORDER BY campaign.id, segments.device
+```
+
+`segments.device` ∈ `MOBILE`, `TABLET`, `DESKTOP`, `OTHER`,
+`CONNECTED_TV`. Compare CPA per device per campaign. Often mobile
+converts at a different rate than desktop — drives `bid-adjust` mobile
+modifiers.
+
+## Time-of-day & day-of-week performance (last 30d)
+
+```sql
+SELECT
+  segments.hour, segments.day_of_week,
+  campaign.id, campaign.name,
+  metrics.cost_micros, metrics.conversions, metrics.clicks, metrics.impressions
+FROM campaign
+WHERE segments.date DURING LAST_30_DAYS
+  AND campaign.status = 'ENABLED'
+```
+
+`segments.hour` is 0-23 (advertiser's account timezone).
+`segments.day_of_week` is `MONDAY..SUNDAY`. Use to identify dead hours
+(low or zero conversions but real spend) — drives `bid-adjust`
+day-parting modifiers.
+
 ## Pending Google recommendations
 
 ```sql

@@ -95,11 +95,11 @@ The fenced ```json block at the bottom is the **executable** part.
 | `assets-add` | `/recommendations`, `/monthly` | POST `assets:mutate` | `create` sitelink/callout/snippet/image asset | [`examples/assets-flow.md`](examples/assets-flow.md) |
 | `assets-link` | `/recommendations`, `/monthly` | POST `customerAssets:mutate` *or* `campaignAssets:mutate` | `create` link with `asset`, `fieldType` | paired with `assets-add` — see [`examples/assets-flow.md`](examples/assets-flow.md) |
 | `assets-unlink` | `/recommendations`, `/monthly` | POST `customerAssets:mutate` *or* `campaignAssets:mutate` | `remove` link `resourceName` | when an extension consistently underperforms |
-| `keyword-add` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `create` `keyword: { text, matchType }` with `cpcBidMicros` | `search-term-mining` (positive direction) |
-| `keyword-pause` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `update` `status: PAUSED` + `updateMask: status` | spend > €X, conv = 0 over 60d |
+| `keyword-add` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `create` `keyword: { text, matchType }` with `cpcBidMicros` | [`examples/keyword-management.md`](examples/keyword-management.md) |
+| `keyword-pause` | `/weekly`, `/monthly` | POST `adGroupCriteria:mutate` | `update` `status: PAUSED` + `updateMask: status` | [`examples/keyword-management.md`](examples/keyword-management.md) |
 | `campaign-toggle` | (operator request) | POST `campaigns:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | one campaign per proposal; explicit operator intent |
 | `ad-toggle` | `/creative`, `/monthly` | POST `adGroupAds:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | when an individual ad consistently underperforms |
-| `bid-adjust` | `/weekly`, `/monthly` | POST `campaignCriteria:mutate` | `create` or `update` `bidModifier` for device/geo/schedule criteria | `budget-management` (extended) |
+| `bid-adjust` | `/weekly`, `/monthly` | POST `campaignCriteria:mutate` | `create` or `update` `bidModifier` for device/geo/schedule criteria | [`examples/bid-adjust.md`](examples/bid-adjust.md) |
 | `conversion-action-mod` | (operator request) | POST `conversionActions:mutate` | `create` or `update` conversion action | `account-audit` Section 2 — careful, foundational |
 | `customer-match-upload` | `/recommendations` | multi-step (`userLists:mutate` → `offlineUserDataJobs:create` → `:addOperations` → `:run`) | hashed PII upload | [`examples/customer-match.md`](examples/customer-match.md) |
 | `recommendation-apply` | `/recommendations` | POST `recommendations:apply` | `applyParameters` per rec type | [`examples/recommendation-apply.md`](examples/recommendation-apply.md) — **no validate_only** |

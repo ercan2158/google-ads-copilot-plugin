@@ -7,7 +7,7 @@ description: Use when running a Google Ads account audit — daily anomaly check
 
 Audit sections, in priority order:
 
-1. **Spend & pacing** — actual vs. expected at this point in the month, by campaign. Use budget pacing query from `gaql`.
+1. **Spend & pacing** — actual vs. expected at this point in the month, by campaign. Use budget pacing query from `gaql`. For deeper diagnosis when pacing is off, dimension the spend by **device**, **geo**, and **time-of-day** (queries in `gaql`) — drives `bid-adjust` proposals via `examples/bid-adjust.md`.
 2. **Conversion health** — total conv last period vs. prior, conversion-action statuses (any "removed but still referenced"?). Conv-action query from gaql skill.
 3. **Search terms** — full mining via `search-term-mining` skill.
 4. **Creative** — RSA asset performance via gaql skill; flag LOW assets.
