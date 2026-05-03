@@ -1,6 +1,6 @@
 ---
 name: explain-to-beginner
-description: UX rules for explaining Google Ads to a non-technical operator. Loaded by every google-ads-copilot slash command — defines TL;DR shape, jargon translations, anti-jargon rule.
+description: Use whenever producing chat output for a non-technical Google Ads operator — defines TL;DR shape, jargon translations (CTR, ROAS, impression share, quality score, match type, etc.), units rule (€ on money, % on rates), and the anti-fabrication rule. Loaded by every google-ads-copilot slash command.
 ---
 
 # explain-to-beginner

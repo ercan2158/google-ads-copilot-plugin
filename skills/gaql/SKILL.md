@@ -34,10 +34,15 @@ SELECT
   metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.impressions
 FROM search_term_view
 WHERE segments.date DURING LAST_30_DAYS
-  AND metrics.impressions > 50
+  AND metrics.impressions > 100
   AND metrics.conversions < 1
 ORDER BY metrics.cost_micros DESC
 ```
+
+The `> 100` impression floor matches the threshold `search-term-mining`
+applies when classifying high-spend-zero-conv candidates — keeping the
+retrieval and the action threshold aligned avoids surfacing rows that
+mining will silently drop.
 
 ## Disapproved ads
 

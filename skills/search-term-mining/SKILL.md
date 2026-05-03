@@ -1,6 +1,6 @@
 ---
 name: search-term-mining
-description: Heuristics for turning a 30-day search-terms report into a vetted negative-keyword proposal. Loaded by /google-ads-copilot:search-terms and /google-ads-copilot:weekly.
+description: Use when finding wasted ad spend, drafting negative keywords, or auditing 30 days of search-term performance. Provides classification heuristics (off-ICP, brand collision, high-spend-zero-conv, long-tail), match-type selection rules (PHRASE > EXACT > BROAD), per-campaign vs customer-level scoping, and the JSON shape for campaignCriteria:mutate. Loaded by /google-ads-copilot:search-terms and /google-ads-copilot:weekly.
 ---
 
 # search-term-mining
@@ -31,6 +31,19 @@ For each `search_term`:
 4. **Long tail?** If the same theme recurs (e.g. multiple "free X" queries),
    propose a single PHRASE or EXACT negative on the theme word, not 20
    tail variants.
+
+## Example classifications
+
+A reference table for the patterns above. Substitute `<product>`,
+`<competitor>`, `<industry-term>` with the operator's actual context.
+
+| Search term                       | Classification                | Match type             | Scope         | Why                                                                                                                                          |
+|---|---|---|---|---|
+| `free <product> tool`             | Off-ICP (rule 1)              | PHRASE on `free`       | Per-campaign  | We're paid software; "free" seekers don't convert. PHRASE on the theme word catches `free X tutorial`, `free X download`, etc. in one shot. |
+| `<product> vs <competitor>`       | Brand collision (rule 2)      | EXACT                  | Per-campaign  | `context/product-positioning.md` says we don't bid on competitor comparisons. EXACT blocks just this phrasing without affecting unrelated queries. |
+| `what is <industry-term>`         | Educational (low intent)      | (skip — no negative)   | —             | Low buying intent but not actively wasteful. Let conversion-tracking surface it later if it accumulates real spend.                          |
+| `<product> excel template`        | Product mismatch (rule 1)     | PHRASE on `excel template` | Per-campaign  | We replace Excel; "template" seekers want a workbook, not software. Catches all `excel template X` variants.                                  |
+| `<product> jobs` / `<product> careers` | Off-intent (rule 1)      | PHRASE on `jobs`, PHRASE on `careers` | Per-campaign  | Recruitment query; never buying intent. Two narrow PHRASE negatives, not one BROAD.                                                          |
 
 ## Pick match type
 

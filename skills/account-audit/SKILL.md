@@ -1,6 +1,6 @@
 ---
 name: account-audit
-description: Audit templates for daily, weekly, monthly, and bootstrap reviews. Section structure, query plan, and severity rubric.
+description: Use when running a Google Ads account audit — daily anomaly checks, weekly tactical reviews, full monthly audits, or first-time bootstrap. Provides the 8-section audit structure (spend, conversion health, search terms, creative, disapprovals, structure, KPI alignment, recommendations), a severity rubric (🔴 critical / 🟡 warning / 🟢 healthy), and which gaql queries to run for each section.
 ---
 
 # account-audit

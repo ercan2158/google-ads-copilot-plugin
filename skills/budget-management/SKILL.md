@@ -1,6 +1,6 @@
 ---
 name: budget-management
-description: Budget pacing math + thresholds for proposing budget shifts. Reads context/budget-policy.md to know what counts as "wildly off."
+description: Use when checking budget pacing, deciding whether to raise or lower a daily budget, or proposing budget shifts between campaigns. Provides the pacing formula (actual vs expected against days-elapsed), decision thresholds tied to context/budget-policy.md and the operator's CPA target from context/kpi-tree.md, and the JSON shape for campaignBudgets:mutate (wrapped via change-execution).
 ---
 
 # budget-management
@@ -44,6 +44,12 @@ Each op:
   "updateMask": "amountMicros"
 }
 ```
+
+Wrap this op in a `change-execution` proposal envelope. The agent never
+calls `:mutate` directly; the proposal goes through
+`/google-ads-copilot:apply` with the five safety gates (account-ID pin,
+`validate_only` dry-run, append-only change-log, single-mutation gate,
+always-propose).
 
 ## Cap
 

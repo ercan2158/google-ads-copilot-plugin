@@ -1,6 +1,6 @@
 ---
 name: creative-management
-description: Read RSA asset performance, identify weak assets, draft replacements. Inputs: context/icp.md, context/product-positioning.md.
+description: Use when reviewing responsive search ad (RSA) creative — identifying LOW-performing headlines or descriptions, drafting replacements aligned to the operator's ICP and positioning, or proposing creative-pause + creative-add op pairs. Reads context/icp.md and context/product-positioning.md for tone, persona pain, and value props. See examples/rsa-headlines.md for a worked before/after.
 ---
 
 # creative-management
@@ -39,6 +39,14 @@ Descriptions: 90 chars max, 4 candidates per RSA, expanded value prop.
   `endpoint: /v23/customers/<id>/adGroupAdAssets:mutate`.
 - `kind: "creative-add"` — add new assets to an existing RSA. Same endpoint,
   `create` operations.
+
+Both kinds are wrapped in `change-execution` proposal envelopes; the
+operator approves each via `/google-ads-copilot:apply` before they ship.
+The two proposals are paired (same date + sequence letter, e.g.
+`2026-05-03-creative-01a-pause` and `2026-05-03-creative-01b-add`); both
+must apply for the change to be complete. See
+[`examples/rsa-headlines.md`](examples/rsa-headlines.md) for a worked
+before/after that shows a full LOW-asset audit and the resulting pair.
 
 ## Scope
 
