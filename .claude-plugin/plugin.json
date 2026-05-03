@@ -1,7 +1,7 @@
 {
   "name": "google-ads-copilot",
-  "version": "0.1.0",
-  "description": "AI-driven Google Ads operator for non-technical SaaS founders. Slash commands that read the account, propose mutations as files, and apply them only on explicit /google-ads-copilot:apply.",
+  "version": "0.2.0",
+  "description": "Safe AI Google Ads operator for technical founders. 12 slash commands read your account and propose mutations as markdown files; only /apply mutates, with five mechanically-enforced gates (account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal substitution). Backed by the official google-ads Python client.",
   "author": {
     "name": "Ercan",
     "email": "kuercan@proton.me",
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin",
   "repository": "https://github.com/ercan2158/google-ads-copilot-plugin",
   "license": "MIT",
-  "keywords": ["google-ads", "advertising", "marketing", "ppc", "saas", "operations", "claude-code"]
+  "keywords": ["google-ads", "advertising", "marketing", "ppc", "saas", "operations", "claude-code", "smart-bidding", "performance-max", "conversion-tracking"]
 }

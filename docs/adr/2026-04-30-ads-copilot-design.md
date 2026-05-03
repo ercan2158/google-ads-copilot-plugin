@@ -1,8 +1,67 @@
 # ads-copilot — Claude Code plugin for AI-driven Google Ads operations
 
-**Status:** Built. v0.1.0 tagged 2026-04-30. Architecture pivot 2026-05-01 (see addendum below) — Composio dropped, direct Google Ads REST API.
-**Date:** 2026-04-30 (design), 2026-05-01 (post-pivot addendum)
+**Status:** Built. v0.2.0 (in progress) on 2026-05-03 after the
+google-ads-python pivot (see second addendum below). v0.1.0 tagged
+2026-04-30. First architecture pivot 2026-05-01 — Composio dropped,
+direct Google Ads REST API. Second pivot 2026-05-03 — bash REST
+helper retired in favor of the official google-ads Python client.
+**Date:** 2026-04-30 (design), 2026-05-01 (post-Composio addendum),
+2026-05-03 (post-Python-migration addendum).
 **Supersedes:** parts of `cadenza` (parked, not deleted).
+
+## Addendum 2: 2026-05-03 — bash REST helper → google-ads Python client
+
+The 2026-05-01 pivot left `bin/ga` as a 235-line bash script that hand-
+rolled OAuth refresh, retry/backoff on 429+5xx, GAQL pagination via
+`nextPageToken`, and structured-error parsing — all things the
+official `google-ads` Python client does for free, with Google's own
+QA behind it. As the surface area grew (conversion-health,
+smart-bidding, pmax, brand-defense audits all added new GAQL queries
+and mutation kinds), the bash was nearing its complexity ceiling: the
+test harness had to mock curl via PATH override with scripted response
+files; pagination's safety cap was hand-tuned; the v23 → v24 path was
+"rewrite every endpoint string in every skill."
+
+**Decision:** retire the bash REST layer. `bin/ga` becomes a thin bash
+wrapper (~22 lines) that exec's `bin/ga.py` inside a vendored Python
+venv. The Python script uses `GoogleAdsClient.load_from_dict()` for
+queries and `google.oauth2.credentials` for the proxy mode. The
+boundary contract holds — skills, commands, and `bin/apply` still call
+`bin/ga query` and `bin/ga proxy` with identical CLI surface and
+identical JSON output shape — so nothing above the boundary changed.
+
+**Tradeoff accepted:** ~50MB venv install (`google-ads` + `grpcio` +
+`protobuf` + `PyYAML`) on first `bin/setup` run. One-time. Reused
+across project workspaces. Pinned via `requirements.txt` so a
+breaking library release doesn't break `bin/setup`.
+
+**What we got back:** automatic OAuth refresh + token cache, native
+gRPC retry/backoff (no manual budget loop), `search_stream` instead
+of pagination cursor management, type-safe enums (`client.enums.*`),
+typed proto messages for mutations, structured `GoogleAdsException`
+with field paths and request_id, and a one-line API-version bump
+(`GOOGLEADS_API_VERSION=v24`). The credentials file format moved from
+the custom `KEY=value` shape to the library's native
+`google-ads.yaml`; `bin/setup` migrates the legacy file in-place on
+first upgrade.
+
+**Mutation safety unchanged.** The five gates of `bin/apply` are still
+enforced by deterministic shell — the LLM is not in the safety path.
+`bin/apply` calls `bin/ga proxy` for the dry-run + live mutation; the
+fact that `bin/ga` is now Python-backed is transparent to it.
+
+**Test coverage rebuilt at the right level.** The bash mock-curl
+harness is gone; `bin/test-ga.py` (35 assertions) stubs the
+`google-ads` library at `sys.modules` level so it runs in CI without
+the full library install — only PyYAML is needed. The `bin/apply`
+suite (27 assertions) is unchanged because `bin/apply` is still bash
+and its mock target (`bin/ga`) presents the same CLI surface.
+
+The decisions table below predates both pivots; treat the
+"Architecture" row as historical and read the body of this addendum +
+the README for current state.
+
+
 
 ## Addendum: architecture pivot 2026-05-01 — drop Composio, hit Google Ads directly
 

@@ -6,8 +6,8 @@
     "url": "https://github.com/ercan2158"
   },
   "metadata": {
-    "description": "AI-driven Google Ads operator for non-technical SaaS founders",
-    "version": "0.1.0",
+    "description": "Safe, opinionated AI Google Ads operator for technical founders running their own Search ads",
+    "version": "0.2.0",
     "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin",
     "repository": "https://github.com/ercan2158/google-ads-copilot-plugin"
   },
@@ -15,9 +15,9 @@
     {
       "name": "google-ads-copilot",
       "source": "./",
-      "description": "Nine slash commands (daily, weekly, monthly, search-terms, budgets, creative, bootstrap, explain, apply) backed by an manager agent and 7 skills. The 'apply' command is the only one that mutates the account; everything else is read-only or writes a proposal file.",
+      "description": "12 slash commands (bootstrap, daily, weekly, monthly, search-terms, budgets, creative, recommendations, explain, changes, undo, apply) backed by a senior-Google-Ads-operator agent and 10 skills (gaql, account-audit, conversion-health, smart-bidding, pmax, search-term-mining, budget-management, creative-management, change-execution, explain-to-beginner). Mutation safety is enforced by a deterministic shell script (bin/apply), not by the LLM: account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal resource-name auto-substitution. The 'apply' command is the only one that mutates the account; everything else is read-only or writes a markdown proposal file you review first.",
       "category": "advertising",
-      "tags": ["google-ads", "advertising", "marketing", "ppc", "operations", "saas"],
+      "tags": ["google-ads", "advertising", "marketing", "ppc", "operations", "saas", "smart-bidding", "performance-max", "conversion-tracking"],
       "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin"
     }
   ]
