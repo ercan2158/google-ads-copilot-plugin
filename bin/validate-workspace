@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""bin/validate-workspace — schema check for workspace.json.
+
+Reads a workspace.json file path as argv[1] (or walks up from cwd to find
+one). Exits 0 if valid; non-zero with a clear error if not.
+
+Validates:
+  - File parses as JSON
+  - account.customer_id is a numeric string (10 digits, dashes optional)
+  - account.manager_customer_id (if present) is also numeric
+  - account.currency is an ISO 4217-shaped 3-letter uppercase code (if present)
+  - account.timezone is an IANA-shaped string (if present, basic format check;
+    real validation requires the zoneinfo db which the venv has)
+
+Called by bin/ga.py + bin/apply at every read.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+
+def find_workspace() -> Path | None:
+    d = Path.cwd().resolve()
+    for _ in range(5):
+        cand = d / "workspace.json"
+        if cand.is_file():
+            return cand
+        if d.parent == d:
+            break
+        d = d.parent
+    return None
+
+
+def die(msg: str) -> "None":
+    sys.stderr.write(f"validate-workspace: {msg}\n")
+    sys.exit(1)
+
+
+def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1]:
+        path = Path(sys.argv[1])
+    else:
+        found = find_workspace()
+        if found is None:
+            die("workspace.json not found within 5 levels above cwd")
+        path = found
+
+    if not path.is_file():
+        die(f"file not found: {path}")
+
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        die(f"workspace.json is not valid JSON: {e}")
+
+    if not isinstance(data, dict):
+        die("workspace.json must be a JSON object at the root")
+
+    account = data.get("account")
+    if not isinstance(account, dict):
+        die("workspace.json must have an 'account' object")
+
+    customer_id = account.get("customer_id")
+    if not customer_id:
+        die("account.customer_id is required")
+    if not isinstance(customer_id, str):
+        die(
+            f"account.customer_id must be a string (got {type(customer_id).__name__}); "
+            "wrap the number in quotes"
+        )
+    cleaned = customer_id.replace("-", "")
+    if not re.fullmatch(r"\d+", cleaned):
+        die(f"account.customer_id must be numeric (got: {customer_id!r})")
+    if len(cleaned) != 10:
+        die(
+            f"account.customer_id should be 10 digits (got {len(cleaned)}: {customer_id!r}); "
+            "Google Ads customer IDs are always 10 digits"
+        )
+
+    mgr = account.get("manager_customer_id")
+    if mgr is not None and mgr != "":
+        if not isinstance(mgr, str):
+            die(f"account.manager_customer_id must be a string (got {type(mgr).__name__})")
+        cleaned_mgr = mgr.replace("-", "")
+        if not re.fullmatch(r"\d+", cleaned_mgr):
+            die(f"account.manager_customer_id must be numeric (got: {mgr!r})")
+        if len(cleaned_mgr) != 10:
+            die(
+                f"account.manager_customer_id should be 10 digits (got {len(cleaned_mgr)}: {mgr!r})"
+            )
+
+    currency = account.get("currency")
+    if currency is not None:
+        if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
+            die(
+                f"account.currency must be a 3-letter ISO 4217 code like 'EUR', 'USD' "
+                f"(got: {currency!r})"
+            )
+
+    timezone = account.get("timezone")
+    if timezone is not None:
+        if not isinstance(timezone, str) or not re.fullmatch(
+            r"[A-Za-z_]+(/[A-Za-z_+\-0-9]+)+|UTC|GMT", timezone
+        ):
+            die(
+                f"account.timezone must be an IANA tz like 'Europe/Berlin' or 'UTC' "
+                f"(got: {timezone!r})"
+            )
+        # Optional deeper check: try to load the zone — only if zoneinfo is available
+        try:
+            from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+            try:
+                ZoneInfo(timezone)
+            except ZoneInfoNotFoundError:
+                die(f"account.timezone {timezone!r} is not a known IANA tz on this system")
+        except ModuleNotFoundError:
+            pass  # python <3.9, can't deep-check
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

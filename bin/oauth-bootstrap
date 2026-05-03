@@ -1,161 +1,194 @@
-#!/usr/bin/env bash
-# bin/oauth-bootstrap — one-time setup of the Google Ads API refresh_token.
-#
-# Prereqs:
-#   - You have created an OAuth 2.0 Desktop client in Google Cloud Console
-#     (in the SAME Cloud project as your Google Ads developer token).
-#   - You have written CLIENT_ID and CLIENT_SECRET to
-#     ~/.config/google-ads-copilot/credentials (one per line, KEY=value),
-#     or set GOOGLE_ADS_COPILOT_CREDENTIALS_FILE to override the path.
-#   - DEVELOPER_TOKEN is also in that file (you set this up earlier).
-#
-# Effect: appends/updates REFRESH_TOKEN= in the same secrets file.
+#!/usr/bin/env python3
+"""bin/oauth-bootstrap — one-time setup of the Google Ads API refresh_token.
 
-set -euo pipefail
+Reads developer_token + client_id + client_secret from
+~/.config/google-ads-copilot/google-ads.yaml (override via
+GOOGLE_ADS_COPILOT_CREDENTIALS_FILE), runs Google's OAuth 2.0 consent flow
+through a localhost-loopback redirect, and writes the resulting
+refresh_token + use_proto_plus: True back into the same yaml file.
 
-SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
-SCOPE="https://www.googleapis.com/auth/adwords"
-PORT="${OAUTH_PORT:-8765}"
+The yaml format is the google-ads-python library's native config — bin/ga
+reads the same file via GoogleAdsClient.load_from_storage().
 
-if [[ ! -f "$SECRETS_FILE" ]]; then
-  echo "$SECRETS_FILE not found." >&2
-  echo "Create it first with at least:" >&2
-  echo "  CLIENT_ID=<your oauth client id>" >&2
-  echo "  CLIENT_SECRET=<your oauth client secret>" >&2
-  echo "  DEVELOPER_TOKEN=<your google ads developer token>" >&2
-  exit 1
-fi
+Prereqs:
+  - Google Ads developer token (request at the Google Ads API Center)
+  - OAuth 2.0 Desktop client in the SAME Cloud project as the developer token
+  - Cloud project with the Google Ads API enabled
+  - Yourself added as a test user on the OAuth consent screen
+"""
 
-# Lock down secrets-file perms before any read/write — prevents a window
-# where freshly-written tokens sit world/group-readable.
-chmod 600 "$SECRETS_FILE"
+from __future__ import annotations
 
-client_id=$(grep '^CLIENT_ID=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
-client_secret=$(grep '^CLIENT_SECRET=' "$SECRETS_FILE" | head -1 | cut -d= -f2-)
-if [[ -z "$client_id" || -z "$client_secret" ]]; then
-  echo "CLIENT_ID and CLIENT_SECRET must be set in $SECRETS_FILE" >&2
-  exit 1
-fi
-
-if ! command -v python3 >/dev/null; then
-  echo "python3 required but not found in PATH" >&2
-  exit 1
-fi
-
-redirect_uri="http://127.0.0.1:${PORT}"
-state=$(openssl rand -hex 12 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(12))')
-
-# URL-encode scope and redirect_uri the way Google expects.
-# Pass values via env vars (NOT shell-interpolated into the Python source)
-# so a quote in any of them can't break out and execute Python.
-auth_url=$(
-  CLIENT_ID="$client_id" \
-  REDIRECT_URI="$redirect_uri" \
-  OAUTH_SCOPE="$SCOPE" \
-  OAUTH_STATE="$state" \
-  python3 -c "
-import urllib.parse, os
-params = {
-  'response_type': 'code',
-  'access_type':   'offline',
-  'prompt':        'consent',
-  'client_id':     os.environ['CLIENT_ID'],
-  'redirect_uri':  os.environ['REDIRECT_URI'],
-  'scope':         os.environ['OAUTH_SCOPE'],
-  'state':         os.environ['OAUTH_STATE'],
-}
-print('https://accounts.google.com/o/oauth2/v2/auth?' + urllib.parse.urlencode(params))
-"
-)
-
-cat <<EOF
-[oauth-bootstrap] Open this URL in your browser:
-
-$auth_url
-
-[oauth-bootstrap] Sign in with the Google account that owns access to your
-                  Google Ads account, then grant the AdWords scope. The
-                  browser will redirect to http://127.0.0.1:${PORT} (which
-                  this script is listening on). Wait for "you can close
-                  this tab" — the auth code will be captured automatically.
-
-[oauth-bootstrap] Listening on 127.0.0.1:${PORT} ...
-EOF
-
-# Listen for the redirect, capture the query string, exit.
-qs=$(python3 - "$PORT" <<'PYEOF'
-import sys, http.server, urllib.parse
-port = int(sys.argv[1])
-captured = {}
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        u = urllib.parse.urlparse(self.path)
-        captured['qs'] = u.query
-        self.send_response(200); self.send_header('Content-type','text/html'); self.end_headers()
-        self.wfile.write(b'<!doctype html><h1>OK, you can close this tab.</h1>')
-    def log_message(self, *a, **kw): pass
-srv = http.server.HTTPServer(('127.0.0.1', port), H)
-srv.handle_request()
-print(captured.get('qs',''))
-PYEOF
-)
-
-# Parse the query string for code + state.
-# Pass $qs via env var (NOT shell-interpolated into the Python string) so a
-# crafted callback can't break out of the quotes and execute arbitrary Python.
-parsed=$(OAUTH_QS="$qs" python3 -c "
-import urllib.parse, os, json
-q = urllib.parse.parse_qs(os.environ['OAUTH_QS'])
-print(json.dumps({k: v[0] for k, v in q.items()}))
-")
-code=$(echo "$parsed" | jq -re '.code')
-got_state=$(echo "$parsed" | jq -re '.state // empty')
-
-if [[ "$got_state" != "$state" ]]; then
-  echo "[oauth-bootstrap] state mismatch — refusing to continue" >&2
-  exit 1
-fi
-
-echo "[oauth-bootstrap] Got auth code, exchanging for refresh_token..."
-
-token_resp=$(curl -sS -X POST https://oauth2.googleapis.com/token \
-  --data-urlencode "code=$code" \
-  --data-urlencode "client_id=$client_id" \
-  --data-urlencode "client_secret=$client_secret" \
-  --data-urlencode "redirect_uri=$redirect_uri" \
-  --data-urlencode "grant_type=authorization_code")
-
-refresh_token=$(echo "$token_resp" | jq -r '.refresh_token // empty')
-if [[ -z "$refresh_token" ]]; then
-  {
-    echo "[oauth-bootstrap] No refresh_token returned. Response:"
-    echo "$token_resp" | jq .
-  } >&2
-  exit 1
-fi
-
-# Update or append REFRESH_TOKEN in the secrets file. Pass values via env
-# vars to avoid shell-interpolation injection if the token contains quotes.
-if grep -q '^REFRESH_TOKEN=' "$SECRETS_FILE"; then
-  SECRETS_FILE_PATH="$SECRETS_FILE" \
-  REFRESH_TOKEN_VALUE="$refresh_token" \
-  python3 -c "
+import http.server
+import json
 import os
-p = os.environ['SECRETS_FILE_PATH']
-new_line = 'REFRESH_TOKEN=' + os.environ['REFRESH_TOKEN_VALUE']
-with open(p) as f:
-    lines = f.readlines()
-with open(p, 'w') as f:
-    for line in lines:
-        if line.startswith('REFRESH_TOKEN='):
-            f.write(new_line + '\n')
-        else:
-            f.write(line)
-"
-else
-  printf '\nREFRESH_TOKEN=%s\n' "$refresh_token" >> "$SECRETS_FILE"
-fi
-chmod 600 "$SECRETS_FILE"
+import secrets
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any
 
-echo "[oauth-bootstrap] Saved REFRESH_TOKEN to $SECRETS_FILE"
-echo "[oauth-bootstrap] Done. Run \`bin/setup\` to verify connectivity."
+CREDENTIALS_FILE = Path(
+    os.environ.get(
+        "GOOGLE_ADS_COPILOT_CREDENTIALS_FILE",
+        Path.home() / ".config/google-ads-copilot/google-ads.yaml",
+    )
+)
+SCOPE = "https://www.googleapis.com/auth/adwords"
+PORT = int(os.environ.get("OAUTH_PORT", "8765"))
+REDIRECT_URI = f"http://127.0.0.1:{PORT}"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+
+
+def die(msg: str) -> None:
+    sys.stderr.write(f"oauth-bootstrap: {msg}\n")
+    sys.exit(1)
+
+
+def load_yaml() -> dict[str, Any]:
+    if not CREDENTIALS_FILE.is_file():
+        die(
+            f"{CREDENTIALS_FILE} not found.\n"
+            "Create it (chmod 600) with at least:\n\n"
+            "  developer_token: <from Google Ads API Center>\n"
+            "  client_id: <your OAuth 2.0 Desktop client>\n"
+            "  client_secret: <same OAuth client>\n\n"
+            "Then re-run this script."
+        )
+    try:
+        import yaml  # type: ignore[import-untyped]
+    except ModuleNotFoundError:
+        die(
+            "PyYAML not installed in the system Python. Run `bin/setup` first "
+            "to create the venv (which has yaml), or `pip install --user pyyaml`."
+        )
+    try:
+        return yaml.safe_load(CREDENTIALS_FILE.read_text()) or {}
+    except yaml.YAMLError as e:
+        die(f"{CREDENTIALS_FILE} is not valid yaml: {e}")
+        return {}  # unreachable, keeps mypy happy
+
+
+def save_yaml(data: dict[str, Any]) -> None:
+    import yaml  # type: ignore[import-untyped]
+
+    CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CREDENTIALS_FILE.write_text(yaml.safe_dump(data, sort_keys=True))
+    CREDENTIALS_FILE.chmod(0o600)
+
+
+def build_auth_url(client_id: str, state: str) -> str:
+    params = {
+        "response_type": "code",
+        "access_type": "offline",
+        "prompt": "consent",
+        "client_id": client_id,
+        "redirect_uri": REDIRECT_URI,
+        "scope": SCOPE,
+        "state": state,
+    }
+    return f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+
+def listen_for_callback() -> str:
+    """Spin up a single-request HTTP server, return the query string of the redirect."""
+    captured: dict[str, str] = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 — http.server contract
+            captured["qs"] = urllib.parse.urlparse(self.path).query
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(
+                b"<!doctype html><h1>OK, you can close this tab.</h1>"
+            )
+
+        def log_message(self, *_args: Any, **_kwargs: Any) -> None:
+            return None
+
+    srv = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
+    srv.handle_request()
+    return captured.get("qs", "")
+
+
+def exchange_code_for_refresh_token(
+    code: str, client_id: str, client_secret: str
+) -> str:
+    body = urllib.parse.urlencode(
+        {
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code",
+        }
+    ).encode("ascii")
+    req = urllib.request.Request(TOKEN_URL, data=body, method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            payload = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        die(f"token exchange failed (HTTP {e.code}): {e.read().decode('utf-8', errors='replace')}")
+    refresh = payload.get("refresh_token")
+    if not refresh:
+        die(
+            "no refresh_token in token-exchange response. Most likely the OAuth "
+            "client was previously consented and Google won't re-issue. Revoke "
+            "the consent at https://myaccount.google.com/permissions and re-run."
+        )
+    return refresh
+
+
+def main() -> None:
+    creds = load_yaml()
+
+    # Lock down perms before any read/write — prevents a window where
+    # freshly-written tokens sit world-readable.
+    if CREDENTIALS_FILE.is_file():
+        CREDENTIALS_FILE.chmod(0o600)
+
+    for key in ("developer_token", "client_id", "client_secret"):
+        if not creds.get(key):
+            die(f"missing {key} in {CREDENTIALS_FILE}")
+
+    state = secrets.token_hex(16)
+    auth_url = build_auth_url(creds["client_id"], state)
+
+    print("[oauth-bootstrap] Open this URL in your browser:\n")
+    print(f"{auth_url}\n")
+    print(
+        "[oauth-bootstrap] Sign in with the Google account that owns access to your\n"
+        "                  Google Ads account, then grant the AdWords scope. The\n"
+        f"                  browser will redirect to {REDIRECT_URI} — this script\n"
+        "                  is listening for the redirect.\n"
+    )
+    print(f"[oauth-bootstrap] Listening on 127.0.0.1:{PORT} ...")
+
+    qs = listen_for_callback()
+    parsed = urllib.parse.parse_qs(qs)
+    code = parsed.get("code", [""])[0]
+    got_state = parsed.get("state", [""])[0]
+    if not code:
+        die("redirect URL had no code parameter")
+    if got_state != state:
+        die("state mismatch — possible CSRF; refusing to continue")
+
+    print("[oauth-bootstrap] Got auth code, exchanging for refresh_token...")
+    refresh_token = exchange_code_for_refresh_token(
+        code, creds["client_id"], creds["client_secret"]
+    )
+
+    creds["refresh_token"] = refresh_token
+    creds.setdefault("use_proto_plus", True)
+    save_yaml(creds)
+
+    print(f"[oauth-bootstrap] Saved refresh_token to {CREDENTIALS_FILE}")
+    print("[oauth-bootstrap] Done. Run `bin/setup` to verify connectivity.")
+
+
+if __name__ == "__main__":
+    main()

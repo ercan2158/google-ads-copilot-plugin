@@ -7,10 +7,14 @@ argument-hint: <proposal-id>  e.g. /google-ads-copilot:apply 2026-04-30-negative
 
 Run as the **manager** agent. Load the **change-execution** skill.
 
+The mutation gates run inside **`bin/apply`**, not inside this prompt.
+The agent's job here is: surface the plan to the operator in plain
+English, capture their y/n in chat, and call the script. The script
+enforces the five gates mechanically.
+
 ## Required argument
 
-`$1` = proposal ID. The file is at
-`workspace/proposals/$1.md`.
+`$1` = proposal ID. The file is at `workspace/proposals/$1.md`.
 
 If `$1` is missing or empty: print
 ```
@@ -22,23 +26,49 @@ Available pending proposals:
 
 ## Steps
 
-Follow the `/google-ads-copilot:apply` contract in the **change-execution** skill
-verbatim. Specifically:
+1. **Plan** — run the deterministic plan command (does the dry-run, no
+   mutation):
 
-1. Read `workspace/proposals/$1.md`. Extract the last fenced ```json block.
-2. Account-ID pin: refuse on mismatch with `workspace.json`.
-3. Run validate_only dry-run via the ga helper. On error: print error, stop.
-4. Print diff in chat (operation summary). Ask "Proceed? (y/n)".
-5. On 'y':
-   - Live run via the ga helper.
-   - For each op, append a JSON line to `workspace/change-log/$(date +%Y-%m-%d).jsonl`.
-   - `mv` proposal to `workspace/proposals/applied/`.
-   - Print "Applied. N operations live."
-6. On 'n':
-   - Leave proposal in place. Print "Skipped."
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/bin/apply" "$1" --plan
+   ```
+
+   On non-zero exit: the script has printed Google's structured error
+   to stderr. Translate to plain English per **explain-to-beginner**,
+   surface to the operator, stop. The proposal is untouched.
+
+2. **Diff in chat** — read the proposal's TL;DR + per-item rationale,
+   summarize for the operator. Ask in chat: "Proceed? (y/n)".
+
+3. **On 'y'** — call apply with `--confirm` to skip the script's own
+   prompt (the operator already said yes in chat):
+
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/bin/apply" "$1" --confirm
+   ```
+
+   The script runs the dry-run again, then the live mutation, then
+   logs to change-log, then moves the proposal to applied/. All
+   atomic — the agent doesn't touch any files.
+
+4. **On 'n'** — do not call --confirm. Print "Skipped."
+
+## What the script enforces (so the agent doesn't have to)
+
+- Account-ID pin (gate 3): refuses on mismatch with `workspace.json`.
+- Proposal schema validation (calls `bin/validate-proposal`): catches
+  malformed JSON, missing fields, invalid endpoints before any API call.
+- `validate_only` dry-run (gate 4): for endpoints that accept it.
+- Resource-name auto-substitution: `<resourceName from proposal X op N>`
+  placeholders are resolved from the change-log automatically — no
+  manual editing of paired proposals.
+- Append-only change-log (gate 5): every op gets a JSONL line; failures
+  are logged with `applied:false`.
+- `mv` proposal to `applied/`: only on full success.
 
 ## Plain-English chat output rule
 
 Every step that surfaces something to the operator follows
 **explain-to-beginner**: TL;DR first, jargon translated on first use,
-units on numbers.
+units on numbers. The script's own output is terse and operational —
+your job in chat is to explain it.

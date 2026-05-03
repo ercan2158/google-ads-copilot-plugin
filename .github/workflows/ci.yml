@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Mocked test suites + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          jq --version
+          python3 --version
+          curl --version | head -1
+          bash --version | head -1
+
+      - name: Install Python deps for tests
+        # google-ads is stubbed in test-ga.py at sys.modules level; we only
+        # need the same PyYAML version that bin/setup pins to.
+        run: pip install $(grep '^PyYAML' requirements.txt)
+
+      - name: bin/test-ga.py — Python wrapper unit tests (35 assertions)
+        run: python3 bin/test-ga.py
+
+      - name: bin/test-apply.sh — bin/apply + validate-proposal (27 assertions)
+        run: bash bin/test-apply.sh
+
+      - name: Lint — markdown code-fence parity
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            n=$(grep -c '^```' "$f" || true)
+            if (( n % 2 != 0 )); then
+              echo "::error file=$f::unbalanced fences ($n total)"
+              fail=1
+            fi
+          done < <(find skills commands agents docs -name '*.md' -type f 2>/dev/null)
+          [[ "$fail" == "0" ]] || exit 1
+
+      - name: Lint — bash -n on bash scripts
+        run: |
+          set -e
+          for f in bin/ga bin/apply bin/setup bin/dev-install bin/validate-proposal bin/test-ga.sh bin/test-apply.sh; do
+            bash -n "$f" || { echo "::error file=$f::syntax error"; exit 1; }
+          done
+
+      - name: Lint — python -m py_compile on Python scripts
+        run: |
+          set -e
+          for f in bin/ga.py bin/oauth-bootstrap bin/test-ga.py; do
+            python3 -m py_compile "$f" || { echo "::error file=$f::syntax error"; exit 1; }
+          done
+
+      - name: Lint — no stale ads- prefixed slash commands
+        run: |
+          if grep -rnE '/ads-(daily|weekly|monthly|search-terms|budgets|creative|bootstrap|explain|apply|undo|changes|recommendations)\b' \
+             skills commands agents README.md 2>/dev/null \
+             | grep -v 'docs/adr' ; then
+            echo "::error::found stale /ads-* references"
+            exit 1
+          fi
+
+      - name: Lint — every referenced skill exists
+        run: |
+          set -e
+          fail=0
+          for skill in gaql account-audit change-execution search-term-mining budget-management creative-management conversion-health smart-bidding pmax explain-to-beginner; do
+            if grep -rq "\\*\\*$skill\\*\\*" commands/ 2>/dev/null; then
+              if [[ ! -f "skills/$skill/SKILL.md" ]]; then
+                echo "::error::commands/* reference skill '$skill' but skills/$skill/SKILL.md does not exist"
+                fail=1
+              fi
+            fi
+          done
+          [[ "$fail" == "0" ]] || exit 1

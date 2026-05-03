@@ -1,0 +1,5 @@
+# Pinned Python deps for google-ads-copilot.
+# Compatible-release operator (~=) — patch updates install, minor breaks don't.
+# Update these intentionally, not as a side-effect of a fresh setup.
+google-ads~=27.0
+PyYAML~=6.0

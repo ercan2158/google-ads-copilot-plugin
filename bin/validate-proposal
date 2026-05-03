@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# bin/validate-proposal — schema check for proposal envelopes.
+# Reads JSON on stdin. Exits 0 if valid; non-zero with a clear error if not.
+#
+# Validates:
+#  - Required top-level fields present (proposal_id, kind, account_id, method, endpoint)
+#  - kind is in the documented kinds list (or surfaces "unknown kind" warning, not fatal)
+#  - account_id is a numeric string
+#  - method is GET / POST / PUT / DELETE / PATCH
+#  - endpoint starts with /
+#  - exactly one of operations[] or body{} present (or neither for parameterless ops)
+#  - validate_first is boolean if present
+#  - operations[] elements are objects (not strings, not nulls)
+#
+# Called by bin/apply before any API call.
+
+set -euo pipefail
+
+KNOWN_KINDS=(
+  negatives budget creative-pause creative-add
+  assets-add assets-link assets-unlink
+  keyword-add keyword-pause campaign-toggle ad-toggle
+  bid-adjust conversion-action-mod customer-match-upload
+  recommendation-apply recommendation-dismiss
+  bidding-strategy-shift bidding-target-tune
+  campaign-setting-update audience-attach audience-detach
+  customer-negative-criterion-add
+)
+
+INPUT=$(cat)
+
+if ! echo "$INPUT" | jq empty 2>/dev/null; then
+  echo "validate-proposal: input is not valid JSON" >&2
+  exit 1
+fi
+
+err() { echo "validate-proposal: $*" >&2; exit 1; }
+
+# Required fields
+for field in proposal_id kind account_id method endpoint; do
+  val=$(echo "$INPUT" | jq -r --arg f "$field" '.[$f] // empty')
+  [[ -z "$val" ]] && err "missing required field: $field"
+done
+
+# account_id numeric
+ACCT=$(echo "$INPUT" | jq -r '.account_id')
+[[ "$ACCT" =~ ^[0-9]+$ ]] || err "account_id must be a numeric string (got: $ACCT)"
+
+# method enum
+METHOD=$(echo "$INPUT" | jq -r '.method')
+case "$METHOD" in
+  GET|POST|PUT|DELETE|PATCH) ;;
+  *) err "method must be one of GET/POST/PUT/DELETE/PATCH (got: $METHOD)" ;;
+esac
+
+# endpoint starts with /
+ENDPOINT=$(echo "$INPUT" | jq -r '.endpoint')
+[[ "${ENDPOINT:0:1}" == "/" ]] || err "endpoint must start with / (got: $ENDPOINT)"
+
+# Endpoint sanity: must contain the api version + customers segment for nearly all kinds.
+# (recommendations:apply, customers:listAccessibleCustomers etc are all under /v23/customers...)
+if ! [[ "$ENDPOINT" =~ ^/v[0-9]+/customers ]]; then
+  echo "validate-proposal: WARN — endpoint does not look like a /vN/customers... path: $ENDPOINT" >&2
+fi
+
+# kind is recognized (warn-only — change-execution is universal, new kinds are allowed)
+KIND=$(echo "$INPUT" | jq -r '.kind')
+known=0
+for k in "${KNOWN_KINDS[@]}"; do
+  [[ "$k" == "$KIND" ]] && { known=1; break; }
+done
+if (( known == 0 )); then
+  echo "validate-proposal: WARN — kind '$KIND' is not in the documented kinds list. New kinds are allowed but should be documented in change-execution/SKILL.md." >&2
+fi
+
+# validate_first boolean
+VF=$(echo "$INPUT" | jq -r '.validate_first | type')
+case "$VF" in
+  boolean|null) ;;
+  *) err "validate_first must be boolean if present (got type: $VF)" ;;
+esac
+
+# Body shape: exactly one of operations[]/body{} or neither
+HAS_OPS=$(echo "$INPUT" | jq -r '.operations | type')
+HAS_BODY=$(echo "$INPUT" | jq -r '.body | type')
+
+case "$HAS_OPS:$HAS_BODY" in
+  array:null|null:object|null:null) ;;
+  array:object) err "proposal has BOTH operations[] and body{} — pick one (see change-execution apply-contract.md)" ;;
+  array:*) err "operations must be an array (got type: $HAS_OPS)" ;;
+  *:object) ;;
+  *) err "unexpected operations/body shapes (operations type: $HAS_OPS, body type: $HAS_BODY)" ;;
+esac
+
+if [[ "$HAS_OPS" == "array" ]]; then
+  N=$(echo "$INPUT" | jq -r '.operations | length')
+  [[ "$N" -lt 1 ]] && err "operations array is empty"
+  # Each op must be an object
+  ALL_OBJ=$(echo "$INPUT" | jq -r '.operations | all(type == "object")')
+  [[ "$ALL_OBJ" == "true" ]] || err "every operations[] element must be an object"
+fi
+
+# OK
+exit 0

@@ -6,7 +6,9 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
+SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/google-ads.yaml}"
+LEGACY_SECRETS="$HOME/.config/google-ads-copilot/credentials"
+VENV_DIR="${GOOGLE_ADS_COPILOT_VENV:-$HOME/.local/share/google-ads-copilot/.venv}"
 
 step() { printf '\n[install] %s\n' "$*"; }
 fail() { printf '[install] FAILED — %s\n' "$*" >&2; exit 1; }
@@ -25,33 +27,45 @@ print_safe_error() {
 # 1. Sanity-check secrets file ------------------------------------------------
 step "checking $SECRETS_FILE"
 if [[ ! -f "$SECRETS_FILE" ]]; then
+  if [[ -f "$LEGACY_SECRETS" ]]; then
+    fail "Legacy KEY=value credentials at $LEGACY_SECRETS detected. Run \`bin/setup\` first to migrate to google-ads.yaml."
+  fi
   cat >&2 <<EOF
 $SECRETS_FILE not found.
 
-Create it (chmod 600) with three keys, then run \`bin/oauth-bootstrap\`,
+Create it (chmod 600) with at least three keys, then run \`bin/oauth-bootstrap\`,
 then re-run this script:
 
-  DEVELOPER_TOKEN=<from Google Ads API Center>
-  CLIENT_ID=<your OAuth 2.0 Desktop client>
-  CLIENT_SECRET=<same OAuth client>
+  developer_token: <from Google Ads API Center>
+  client_id: <your OAuth 2.0 Desktop client>
+  client_secret: <same OAuth client>
+  use_proto_plus: true
 EOF
   exit 1
 fi
-missing=()
-for key in DEVELOPER_TOKEN CLIENT_ID CLIENT_SECRET REFRESH_TOKEN; do
-  grep -q "^${key}=" "$SECRETS_FILE" || missing+=( "$key" )
-done
-if (( ${#missing[@]} > 0 )); then
-  if [[ " ${missing[*]} " == *" REFRESH_TOKEN "* && ${#missing[@]} -eq 1 ]]; then
-    fail "REFRESH_TOKEN missing — run \`bin/oauth-bootstrap\` then re-run this"
-  fi
-  fail "missing keys in $SECRETS_FILE: ${missing[*]}"
+if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
+  fail "vendored venv not found at $VENV_DIR — run \`bin/setup\` first to create it"
 fi
-step "secrets OK (DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN present)"
+"$VENV_DIR/bin/python3" - <<EOF || fail "credentials yaml validation failed"
+import yaml, sys
+data = yaml.safe_load(open("$SECRETS_FILE")) or {}
+needed = ("developer_token", "client_id", "client_secret", "refresh_token")
+missing = [k for k in needed if not data.get(k)]
+if "refresh_token" in missing and len(missing) == 1:
+    print("refresh_token missing — run bin/oauth-bootstrap then re-run", file=sys.stderr)
+    sys.exit(1)
+if missing:
+    print(f"missing keys in $SECRETS_FILE: {missing}", file=sys.stderr)
+    sys.exit(1)
+EOF
+step "credentials OK (developer_token, client_id, client_secret, refresh_token present)"
 
 # 2. Run unit tests -----------------------------------------------------------
 step "running bin/test-ga.sh"
 "$REPO_DIR/bin/test-ga.sh"
+
+step "running bin/test-apply.sh"
+"$REPO_DIR/bin/test-apply.sh"
 
 # 3. Register the marketplace + install the plugin (both idempotent) ---------
 step "registering Claude Code marketplace + plugin (idempotent)"

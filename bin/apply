@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+# bin/apply — the ONLY mutation entry point.
+#
+# Reads workspace/proposals/<id>.md, extracts the last fenced ```json block,
+# enforces the five safety gates from change-execution, then runs the
+# mutation through bin/ga.
+#
+# Modes:
+#   bin/apply <id>            interactive — prints plan, prompts y/n, applies
+#   bin/apply <id> --plan     print the plan + dry-run result, do NOT apply
+#   bin/apply <id> --confirm  skip the y/n prompt (for agent-driven flows
+#                             where the operator has already typed yes in chat)
+#
+# Every gate is mechanical: account-ID pin, schema validation, dry-run,
+# change-log append, mv-to-applied. The LLM is not in the safety path.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+GA="$REPO_DIR/bin/ga"
+
+usage() {
+  cat <<EOF >&2
+Usage: bin/apply <proposal-id> [--plan|--confirm]
+
+Modes:
+  (default)   interactive — print plan, prompt y/n, apply on y
+  --plan      print the plan + dry-run, do not apply
+  --confirm   skip y/n prompt (operator already confirmed)
+
+Examples:
+  bin/apply 2026-05-03-negatives-01
+  bin/apply 2026-05-03-budget-02 --plan
+  bin/apply 2026-05-03-creative-01a-pause --confirm
+EOF
+  exit 64
+}
+
+[[ $# -lt 1 ]] && usage
+PROPOSAL_ID="$1"
+MODE="${2:-interactive}"
+case "$MODE" in
+  interactive|--plan|--confirm) ;;
+  -h|--help|help) usage ;;
+  *) echo "apply: unknown mode $MODE" >&2; usage ;;
+esac
+
+# 1. Locate the workspace + the proposal file -------------------------------
+find_workspace() {
+  local dir="$PWD" i
+  for i in 1 2 3 4 5; do
+    [[ -f "$dir/workspace.json" ]] && { echo "$dir/workspace.json"; return 0; }
+    [[ "$dir" == "/" ]] && break
+    dir=$(cd "$dir/.." && pwd)
+  done
+  return 1
+}
+
+WORKSPACE_JSON=$(find_workspace) || {
+  echo "apply: workspace.json not found within 5 levels above PWD" >&2
+  echo "        cd into a workspace folder, or run /google-ads-copilot:bootstrap" >&2
+  exit 1
+}
+WORKSPACE_DIR=$(dirname "$WORKSPACE_JSON")
+
+# Schema-validate workspace.json (clearer error than mid-pipeline jq failure)
+if [[ -x "$REPO_DIR/bin/validate-workspace" ]]; then
+  if ! err=$("$REPO_DIR/bin/validate-workspace" "$WORKSPACE_JSON" 2>&1); then
+    echo "apply: workspace.json failed schema validation:" >&2
+    echo "$err" >&2
+    exit 1
+  fi
+fi
+PROPOSAL_FILE="$WORKSPACE_DIR/workspace/proposals/$PROPOSAL_ID.md"
+
+if [[ ! -f "$PROPOSAL_FILE" ]]; then
+  {
+    echo "apply: proposal not found: $PROPOSAL_FILE"
+    echo
+    echo "Available pending proposals:"
+    if [[ -d "$WORKSPACE_DIR/workspace/proposals" ]]; then
+      find "$WORKSPACE_DIR/workspace/proposals" -maxdepth 1 -name '*.md' -type f -printf '  %f\n' 2>/dev/null \
+        || find "$WORKSPACE_DIR/workspace/proposals" -maxdepth 1 -name '*.md' -type f -exec basename {} \; | sed 's/^/  /'
+    else
+      echo "  (no workspace/proposals/ directory)"
+    fi
+  } >&2
+  exit 1
+fi
+
+# 2. Extract the last fenced ```json block ----------------------------------
+extract_json() {
+  awk '
+    /^```json[[:space:]]*$/ { in_block=1; buf=""; next }
+    /^```[[:space:]]*$/    { if (in_block) { last=buf; in_block=0 }; next }
+    in_block               { buf = buf $0 "\n" }
+    END                    { printf "%s", last }
+  ' "$1"
+}
+
+PROPOSAL_JSON=$(extract_json "$PROPOSAL_FILE")
+[[ -z "$PROPOSAL_JSON" ]] && {
+  echo "apply: no fenced \`\`\`json block found in $PROPOSAL_FILE" >&2
+  exit 1
+}
+
+if ! echo "$PROPOSAL_JSON" | jq empty 2>/dev/null; then
+  echo "apply: proposal contains malformed JSON:" >&2
+  echo "$PROPOSAL_JSON" >&2
+  exit 1
+fi
+
+# 3. Schema validation (delegated to bin/validate-proposal) -----------------
+if [[ -x "$REPO_DIR/bin/validate-proposal" ]]; then
+  if ! err=$("$REPO_DIR/bin/validate-proposal" <<<"$PROPOSAL_JSON" 2>&1); then
+    echo "apply: proposal failed schema validation:" >&2
+    echo "$err" >&2
+    exit 1
+  fi
+fi
+
+# 4. Account-ID pin (gate 3) ------------------------------------------------
+WORKSPACE_ACCT=$(jq -re '.account.customer_id' "$WORKSPACE_JSON")
+PROPOSAL_ACCT=$(echo "$PROPOSAL_JSON" | jq -re '.account_id')
+if [[ "$WORKSPACE_ACCT" != "$PROPOSAL_ACCT" ]]; then
+  echo "REFUSED: proposal account_id ($PROPOSAL_ACCT) doesn't match workspace ($WORKSPACE_ACCT)" >&2
+  echo "        Either you're applying the wrong proposal, or you're cd'd into the wrong workspace." >&2
+  exit 1
+fi
+
+KIND=$(echo "$PROPOSAL_JSON" | jq -re '.kind')
+METHOD=$(echo "$PROPOSAL_JSON" | jq -re '.method')
+ENDPOINT=$(echo "$PROPOSAL_JSON" | jq -re '.endpoint')
+VALIDATE_FIRST=$(echo "$PROPOSAL_JSON" | jq -r '.validate_first // false')
+
+# 5. Auto-substitute <resourceName from proposal X op N> placeholders -------
+# (so paired proposals like assets-add → assets-link work without manual edit)
+LOG_DIR="$WORKSPACE_DIR/workspace/change-log"
+
+resolve_placeholder() {
+  local prev_id="$1" op_idx="$2"
+  local found
+  if [[ ! -d "$LOG_DIR" ]]; then return 1; fi
+  found=$(grep -rh "\"proposal_id\":\"$prev_id\"" "$LOG_DIR"/*.jsonl 2>/dev/null \
+    | jq -r --argjson n "$op_idx" \
+        '.response.results[$n - 1].resourceName // empty' \
+    | head -1)
+  [[ -n "$found" ]] && echo "$found"
+}
+
+substitute_placeholders() {
+  local body="$1" pattern token prev_id op_idx resolved
+  pattern='<resourceName from proposal ([^ ]+) op ([0-9]+)>'
+  while echo "$body" | grep -qE "$pattern"; do
+    token=$(echo "$body" | grep -oE "$pattern" | head -1)
+    prev_id=$(echo "$token" | sed -E 's/.*proposal ([^ ]+) op.*/\1/')
+    op_idx=$(echo "$token" | sed -E 's/.*op ([0-9]+).*/\1/')
+    resolved=$(resolve_placeholder "$prev_id" "$op_idx" || true)
+    if [[ -z "$resolved" ]]; then
+      {
+        echo "apply: cannot resolve placeholder $token"
+        echo "       proposal $prev_id either hasn't been applied or has no op #$op_idx in the change-log"
+        echo "       Apply $prev_id first, then re-run this proposal."
+      } >&2
+      return 1
+    fi
+    # Substitute. Use jq's @text-mode gsub for clean string replacement.
+    # Escape regex metacharacters in the token before passing to gsub.
+    new_body=$(jq -nrc --arg b "$body" --arg t "$token" --arg r "$resolved" \
+      '$b | gsub($t | gsub("[.*+?^${}()|[\\]\\\\]"; "\\\\\\(.)"); $r)' 2>/dev/null \
+      || true)
+    if [[ -n "$new_body" && "$new_body" != "$body" ]]; then
+      body="$new_body"
+    else
+      # Fallback: bash literal substitution. ${var//pattern/replacement} treats
+      # the pattern as a glob, but our token has no glob metacharacters.
+      body="${body//$token/$resolved}"
+    fi
+  done
+  echo "$body"
+}
+
+PROPOSAL_JSON=$(substitute_placeholders "$PROPOSAL_JSON") || exit 1
+
+# 6. Build request body per the operations[]/body/empty rule ----------------
+HAS_OPERATIONS=$(echo "$PROPOSAL_JSON" | jq -r '.operations | type')
+HAS_BODY=$(echo "$PROPOSAL_JSON" | jq -r '.body | type')
+
+build_body() {
+  local validate_only="$1"
+  if [[ "$HAS_OPERATIONS" == "array" ]]; then
+    if [[ "$validate_only" == "true" ]]; then
+      echo "$PROPOSAL_JSON" | jq -c '{operations: .operations, validateOnly: true}'
+    else
+      echo "$PROPOSAL_JSON" | jq -c '{operations: .operations, validateOnly: false}'
+    fi
+  elif [[ "$HAS_BODY" == "object" ]]; then
+    if [[ "$validate_only" == "true" ]]; then
+      echo "$PROPOSAL_JSON" | jq -c '.body + {validateOnly: true}'
+    else
+      echo "$PROPOSAL_JSON" | jq -c '.body'
+    fi
+  else
+    echo '{}'
+  fi
+}
+
+# 7. Validate-only dry-run (gate 4) -----------------------------------------
+NUM_OPS=$(echo "$PROPOSAL_JSON" | jq -r '.operations | length // 1')
+
+if [[ "$VALIDATE_FIRST" == "true" ]]; then
+  echo "[apply] $KIND ($PROPOSAL_ID) — running validate_only dry-run against $METHOD $ENDPOINT"
+  DRY_BODY=$(build_body true)
+  DRY_RESP=$("$GA" proxy "$METHOD" "$ENDPOINT" "$DRY_BODY") || {
+    echo "[apply] dry-run call FAILED (network or 5xx after retry budget):" >&2
+    echo "$DRY_RESP" >&2
+    exit 1
+  }
+  if echo "$DRY_RESP" | jq -e '.error // empty' >/dev/null 2>&1; then
+    echo "[apply] dry-run REJECTED by Google:" >&2
+    echo "$DRY_RESP" | jq '.error' >&2
+    echo "[apply] proposal left in place. Fix the proposal and re-run." >&2
+    exit 1
+  fi
+  echo "[apply] dry-run passed."
+else
+  echo "[apply] $KIND ($PROPOSAL_ID) — endpoint does not accept validateOnly; skipping dry-run."
+fi
+
+# 8. Plan-only mode exits here ----------------------------------------------
+if [[ "$MODE" == "--plan" ]]; then
+  echo
+  echo "Plan summary:"
+  echo "  kind:      $KIND"
+  echo "  endpoint:  $METHOD $ENDPOINT"
+  echo "  ops:       $NUM_OPS"
+  echo "  account:   $PROPOSAL_ACCT"
+  echo
+  echo "To apply: bin/apply $PROPOSAL_ID --confirm"
+  exit 0
+fi
+
+# 9. Confirmation -----------------------------------------------------------
+if [[ "$MODE" != "--confirm" ]]; then
+  echo
+  echo "About to apply: $KIND ($PROPOSAL_ID)"
+  echo "  endpoint: $METHOD $ENDPOINT"
+  echo "  ops:      $NUM_OPS"
+  read -rp "Proceed? (y/n): " ANS
+  if [[ "$ANS" != "y" && "$ANS" != "Y" ]]; then
+    echo "[apply] skipped. Re-run later: bin/apply $PROPOSAL_ID"
+    exit 0
+  fi
+fi
+
+# 10. Live mutation ---------------------------------------------------------
+LIVE_BODY=$(build_body false)
+LIVE_RESP=$("$GA" proxy "$METHOD" "$ENDPOINT" "$LIVE_BODY") || {
+  echo "[apply] LIVE MUTATION FAILED. Response:" >&2
+  echo "$LIVE_RESP" >&2
+  # Append a failed entry to the change-log so the audit trail records
+  # the attempt even on transport failure.
+  mkdir -p "$LOG_DIR"
+  TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq -nc --arg ts "$TS" --arg pid "$PROPOSAL_ID" --arg kind "$KIND" \
+    --arg acct "$PROPOSAL_ACCT" --argjson req "$LIVE_BODY" --arg resp "$LIVE_RESP" \
+    '{ts: $ts, proposal_id: $pid, kind: $kind, account_id: $acct, request: $req, response: $resp, applied: false, failure: "transport"}' \
+    >> "$LOG_DIR/$(date +%Y-%m-%d).jsonl"
+  exit 1
+}
+
+# 11. Did Google accept it? -------------------------------------------------
+if echo "$LIVE_RESP" | jq -e '.error // empty' >/dev/null 2>&1; then
+  echo "[apply] LIVE MUTATION REJECTED by Google after dry-run passed (rare):" >&2
+  echo "$LIVE_RESP" | jq '.error' >&2
+  mkdir -p "$LOG_DIR"
+  TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq -nc --arg ts "$TS" --arg pid "$PROPOSAL_ID" --arg kind "$KIND" \
+    --arg acct "$PROPOSAL_ACCT" --argjson req "$LIVE_BODY" --argjson resp "$LIVE_RESP" \
+    '{ts: $ts, proposal_id: $pid, kind: $kind, account_id: $acct, request: $req, response: $resp, applied: false, failure: "rejected"}' \
+    >> "$LOG_DIR/$(date +%Y-%m-%d).jsonl"
+  exit 1
+fi
+
+# 12. Append to change-log + mv proposal to applied/ -----------------------
+mkdir -p "$LOG_DIR"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+LOG_FILE="$LOG_DIR/$(date +%Y-%m-%d).jsonl"
+
+jq -nc \
+  --arg ts "$TS" \
+  --arg pid "$PROPOSAL_ID" \
+  --arg kind "$KIND" \
+  --arg acct "$PROPOSAL_ACCT" \
+  --argjson req "$LIVE_BODY" \
+  --argjson resp "$LIVE_RESP" \
+  '{ts: $ts, proposal_id: $pid, kind: $kind, account_id: $acct, request: $req, response: $resp, applied: true}' \
+  >> "$LOG_FILE"
+
+APPLIED_DIR="$WORKSPACE_DIR/workspace/proposals/applied"
+mkdir -p "$APPLIED_DIR"
+if ! mv "$PROPOSAL_FILE" "$APPLIED_DIR/$PROPOSAL_ID.md" 2>/dev/null; then
+  echo "[apply] WARN: mutation shipped but couldn't move $PROPOSAL_FILE to $APPLIED_DIR" >&2
+  echo "         Manually: mv $PROPOSAL_FILE $APPLIED_DIR/$PROPOSAL_ID.md" >&2
+fi
+
+echo "[apply] applied. $NUM_OPS operation(s) live."
+echo "        change-log: $LOG_FILE"
+echo "        proposal:   $APPLIED_DIR/$PROPOSAL_ID.md"

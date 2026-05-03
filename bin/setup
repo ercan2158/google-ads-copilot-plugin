@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 # bin/setup — one-time per-machine setup for google-ads-copilot.
-# Verifies prereqs, walks through OAuth, runs a live smoke test against
-# Google Ads. Idempotent — safe to re-run.
+#
+# Idempotent. Steps:
+#   1. Verify prereqs (python3, jq, curl)
+#   2. Create vendored venv at ~/.local/share/google-ads-copilot/.venv (if missing)
+#   3. Install / upgrade google-ads + PyYAML inside the venv
+#   4. If old KEY=value credentials file exists, migrate to google-ads.yaml
+#   5. Validate yaml has required keys; run oauth-bootstrap if refresh_token missing
+#   6. Run mocked tests (bin/test-ga.sh + bin/test-apply.sh)
+#   7. Live smoke test (listAccessibleCustomers)
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/credentials}"
+SECRETS_FILE="${GOOGLE_ADS_COPILOT_CREDENTIALS_FILE:-$HOME/.config/google-ads-copilot/google-ads.yaml}"
+LEGACY_SECRETS="$HOME/.config/google-ads-copilot/credentials"
+VENV_DIR="${GOOGLE_ADS_COPILOT_VENV:-$HOME/.local/share/google-ads-copilot/.venv}"
 
 step() { printf '\n[setup] %s\n' "$*"; }
 fail() { printf '[setup] FAILED — %s\n' "$*" >&2; exit 1; }
 
 # Print a response safely. Structured Google Ads errors → show only the
-# {code,message,status,details} fields; anything else (OAuth flat errors,
-# curl network failures, HTML) → truncate to 200 chars. Avoids dumping
-# raw responses that might include token fragments to terminals/logs.
+# {code,message,status,details} fields; anything else → truncate to 200 chars.
 print_safe_error() {
   if echo "$1" | jq -e '.error | type == "object"' >/dev/null 2>&1; then
     echo "$1" | jq '.error | {code, message, status, details}' >&2
@@ -25,14 +32,70 @@ print_safe_error() {
 }
 
 # 1. Prereq check ------------------------------------------------------------
-step "checking prereqs (jq, python3, curl)"
-for tool in jq python3 curl; do
+step "checking prereqs (python3, jq, curl)"
+for tool in python3 jq curl; do
   command -v "$tool" >/dev/null || fail "missing prereq: $tool (install it, then re-run)"
 done
+PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')
+PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
+PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
+if (( PY_MAJOR < 3 )) || (( PY_MAJOR == 3 && PY_MINOR < 9 )); then
+  fail "python3 >= 3.9 required (found $PY_VER)"
+fi
 
-# 2. Secrets file check (with helpful first-run message) ---------------------
+# 2. Vendored venv -----------------------------------------------------------
+if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
+  step "creating vendored venv at $VENV_DIR"
+  mkdir -p "$(dirname "$VENV_DIR")"
+  python3 -m venv "$VENV_DIR"
+fi
+
+# 3. Install / upgrade dependencies ------------------------------------------
+step "installing google-ads + PyYAML in venv (one-time, ~50MB) — pinned via requirements.txt"
+"$VENV_DIR/bin/python3" -m pip install --upgrade --quiet pip
+"$VENV_DIR/bin/python3" -m pip install --quiet -r "$REPO_DIR/requirements.txt"
+
+# Verify the import works
+if ! "$VENV_DIR/bin/python3" -c "from google.ads.googleads.client import GoogleAdsClient; import yaml" 2>/dev/null; then
+  fail "google-ads imported but failed sanity check inside venv"
+fi
+step "venv ready ($("$VENV_DIR/bin/python3" -c 'import google.ads.googleads as m; print("google-ads", m.__version__ if hasattr(m, "__version__") else "(version unknown)")'))"
+
+# 4. Migrate legacy KEY=value credentials → yaml -----------------------------
+if [[ -f "$LEGACY_SECRETS" && ! -f "$SECRETS_FILE" ]]; then
+  step "migrating legacy credentials → google-ads.yaml"
+  "$VENV_DIR/bin/python3" - <<EOF
+import yaml, os
+src = "$LEGACY_SECRETS"; dst = "$SECRETS_FILE"
+out = {}
+key_map = {
+  "DEVELOPER_TOKEN": "developer_token",
+  "CLIENT_ID": "client_id",
+  "CLIENT_SECRET": "client_secret",
+  "REFRESH_TOKEN": "refresh_token",
+}
+with open(src) as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        mapped = key_map.get(k.strip())
+        if mapped:
+            out[mapped] = v.strip()
+out["use_proto_plus"] = True
+os.makedirs(os.path.dirname(dst), exist_ok=True)
+with open(dst, "w") as f:
+    yaml.safe_dump(out, f, sort_keys=True)
+os.chmod(dst, 0o600)
+EOF
+  echo "  migrated $LEGACY_SECRETS → $SECRETS_FILE"
+  echo "  the old file is left in place; you can delete it manually after verifying"
+fi
+
+# 5. Validate yaml has required keys -----------------------------------------
 if [[ ! -f "$SECRETS_FILE" ]]; then
-  cat <<EOF
+  cat <<EOF >&2
 
 [setup] $SECRETS_FILE not found.
 
@@ -46,15 +109,16 @@ Before continuing you need three things from Google:
 
   3. An OAuth 2.0 Client ID/Secret (Desktop type) in that Cloud project.
 
-Once you have those, create the secrets file:
+Once you have those, create the credentials file:
 
   mkdir -p "$(dirname "$SECRETS_FILE")"
   chmod 700 "$(dirname "$SECRETS_FILE")"
-  cat > "$SECRETS_FILE" <<'KEYS'
-  DEVELOPER_TOKEN=<from API Center>
-  CLIENT_ID=<your OAuth 2.0 Desktop client>
-  CLIENT_SECRET=<same OAuth client>
-  KEYS
+  cat > "$SECRETS_FILE" <<'YAML'
+  developer_token: <from API Center>
+  client_id: <your OAuth 2.0 Desktop client>
+  client_secret: <same OAuth client>
+  use_proto_plus: true
+  YAML
   chmod 600 "$SECRETS_FILE"
 
 Then re-run: bin/setup
@@ -62,34 +126,39 @@ EOF
   exit 1
 fi
 
-# 3. Validate the three required keys are present ----------------------------
-missing=()
-for key in DEVELOPER_TOKEN CLIENT_ID CLIENT_SECRET; do
-  grep -q "^${key}=" "$SECRETS_FILE" || missing+=( "$key" )
-done
-if (( ${#missing[@]} > 0 )); then
-  fail "missing keys in $SECRETS_FILE: ${missing[*]}"
-fi
+step "validating $SECRETS_FILE"
+"$VENV_DIR/bin/python3" - <<EOF || fail "credentials file failed validation"
+import yaml, sys
+data = yaml.safe_load(open("$SECRETS_FILE")) or {}
+missing = [k for k in ("developer_token", "client_id", "client_secret") if not data.get(k)]
+if missing:
+    print(f"missing keys: {missing}", file=sys.stderr)
+    sys.exit(1)
+EOF
 
-# 4. Run OAuth bootstrap if REFRESH_TOKEN missing ----------------------------
-if ! grep -q "^REFRESH_TOKEN=" "$SECRETS_FILE"; then
-  step "REFRESH_TOKEN missing — running bin/oauth-bootstrap"
+# 6. Run OAuth bootstrap if refresh_token missing ----------------------------
+HAS_REFRESH=$("$VENV_DIR/bin/python3" -c "import yaml; print('yes' if yaml.safe_load(open('$SECRETS_FILE')).get('refresh_token') else 'no')")
+if [[ "$HAS_REFRESH" != "yes" ]]; then
+  step "refresh_token missing — running bin/oauth-bootstrap"
   "$REPO_DIR/bin/oauth-bootstrap"
 else
-  step "REFRESH_TOKEN already present"
+  step "refresh_token already present"
 fi
 
-# 5. Mocked unit tests -------------------------------------------------------
+# 7. Mocked unit tests -------------------------------------------------------
 step "running mocked tests (bin/test-ga.sh)"
 "$REPO_DIR/bin/test-ga.sh"
 
-# 6. Live smoke test ---------------------------------------------------------
+step "running mocked tests (bin/test-apply.sh)"
+"$REPO_DIR/bin/test-apply.sh"
+
+# 8. Live smoke test ---------------------------------------------------------
 step "live smoke test: listAccessibleCustomers"
 out=$("$REPO_DIR/bin/ga" proxy GET /v23/customers:listAccessibleCustomers 2>&1) || {
   print_safe_error "$out"
   fail "ga errored. Likely fixes:
-  - Run \`bin/oauth-bootstrap\` if REFRESH_TOKEN was revoked
-  - Check that your DEVELOPER_TOKEN's Cloud project matches your OAuth client's"
+  - Run \`bin/oauth-bootstrap\` if refresh_token was revoked
+  - Check that your developer_token's Cloud project matches your OAuth client's"
 }
 
 if echo "$out" | jq -e '.error // empty' >/dev/null 2>&1; then
@@ -109,7 +178,7 @@ cat <<'EOF'
 
 Next: cd into a SaaS project folder and run:
         claude
-        > /ads-bootstrap
+        > /google-ads-copilot:bootstrap
 
   The first run scaffolds workspace.json + context/ stubs interactively,
   then runs a deep audit.
