@@ -49,7 +49,7 @@ parenthetical translation. After that, no translation. Track per session.
 | primary_for_goal | "this conversion counts toward my main goal"; Smart Bidding only optimizes for actions where this is true |
 | counting_type (one-per-click / many-per-click) | whether one click that converts twice counts as 1 or 2 conversions |
 | attribution model | how Google distributes conversion credit across multiple ad clicks before the conversion |
-| data-driven attribution (DDA) | Google's ML-based attribution model; needs ≥300 conv/30d on the action to function |
+| data-driven attribution (DDA) | Google's ML-based attribution model — the default for new conversion actions since mid-2023. The old "needs ≥300 conv/30d" minimum was removed; DDA now operates at lower volumes by blending in cross-account learning |
 | click-through lookback window | how many days after a click Google still credits a conversion to that click (default 30) |
 | enhanced conversions | a setup that hashes user data on your site and sends it back to Google for better matching — typically 15-30% accuracy uplift since iOS 14 |
 | Smart Bidding | umbrella name for tCPA, tROAS, Maximize Conversions, Maximize Conversion Value; ML-driven bid auctions |

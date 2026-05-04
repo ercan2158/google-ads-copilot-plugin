@@ -89,6 +89,60 @@ operator should be loud about them in chat ("⚠️ The mutation shipped
 but I couldn't move the proposal — manually mv workspace/proposals/X to
 workspace/proposals/applied/").
 
+## Dashboard-drift detection (cross-kind)
+
+`/google-ads-copilot:undo` MUST query the current live value of every
+field it's about to invert before drafting the inverse op. If the live
+value differs from BOTH the original proposal's pre-value AND its
+post-value, the operator changed it manually in the dashboard between
+apply and undo — the inverse would silently overwrite that manual
+change.
+
+The pattern (per kind, in pseudo-code):
+
+```
+1. Read original applied proposal + change-log entry.
+2. For each updated field, read metadata.previous_<field> (pre) and
+   the change-log response (post).
+3. Query the current live value via gaql / bin/ga for the same resource.
+4. If current != pre AND current != post:
+   refuse with: "⚠️ dashboard-drift detected on <field>:
+                  live=<current>, apply pre=<pre>, apply post=<post>.
+                  Re-run /undo with --force to overwrite, or draft a
+                  fresh <kind> proposal targeting the value you want."
+5. Else proceed with normal inverse construction below.
+```
+
+Applies to every `update`-flavored kind — fields the operator might
+also touch in the dashboard:
+
+- `budget` (`amount_micros`)
+- `bidding-target-tune` (`target_cpa.target_cpa_micros` /
+  `target_roas.target_roas`)
+- `bidding-strategy-shift` (`bidding_strategy_type` — any non-equal
+  current value is drift)
+- `conversion-action-mod` (every updated field: `primary_for_goal`,
+  `click_through_lookback_window_days`, `attribution_model_settings.attribution_model`,
+  `value_settings.default_value`)
+- `campaign-setting-update` (every updated field — `geo_target_type_setting.positive_geo_target_type`,
+  `network_settings.*`, etc.)
+- `bid-adjust` (`bid_modifier` on the target criterion)
+- `keyword-pause` / `ad-toggle` / `campaign-toggle` (`status` —
+  flip-only inverse, drift = operator already toggled)
+
+Does NOT apply to additive `create` kinds. The inverse is `remove` by
+resource-name; if the operator already removed the resource externally,
+the live mutate returns `RESOURCE_NOT_FOUND` and the change-log records
+`applied:false` — no silent overwrite is possible:
+
+- `negatives`, `keyword-add`, `creative-add`, `creative-pause` (re-link),
+  `assets-add`, `assets-link`, `assets-unlink` (re-link), `audience-attach`,
+  `audience-detach` (re-link), `customer-negative-criterion-add`
+
+Per-kind rows below mark drift-checked kinds with **drift-checked**.
+The original `budget` rule already documents the full check verbatim
+as the canonical example; other rows reference back to this section.
+
 ## Per-kind inverse rules (canonical)
 
 Used by `/google-ads-copilot:undo` to draft the inverse of an applied
@@ -106,14 +160,14 @@ The inverse is a new proposal that goes through the normal apply flow.
 | `assets-link`           | yes         | `remove` op against each customerAsset/campaignAsset link `resourceName` from the original response.          |
 | `assets-unlink`         | yes         | Re-`create` link with the same `asset` + `fieldType` from the original request.                               |
 | `keyword-add`           | yes         | `remove` op against each criterion `resourceName` from the original response.                                |
-| `keyword-pause`         | yes         | `update` `status: ENABLED` + `updateMask: status` against each criterion resource name.                       |
-| `campaign-toggle`       | yes         | `update` flipping `status` back (PAUSED → ENABLED or vice-versa) + `updateMask: status`.                      |
-| `ad-toggle`             | yes         | `update` flipping `status` back + `updateMask: status`.                                                        |
-| `bid-adjust`            | yes         | If the original proposal's `metadata.previous_modifier` was null: `remove` the criterion (created by the original). Else `update` `bidModifier` back to the previous value + `updateMask: bidModifier`. |
-| `conversion-action-mod` | yes (best-effort) | `update` fields back to their pre-change values from the original proposal's `metadata.previous_*`. If those weren't recorded, refuse with explanation; the operator must restore manually. |
-| `bidding-strategy-shift` | yes (best-effort) | `update` `bidding_strategy_type` + matching target back to `metadata.previous_strategy` + `metadata.previous_target_*`. **Warn loudly**: a strategy switch invalidates the strategy's learning, so even a perfect inverse means the campaign re-enters `LEARNING_NEW` for ~14 days. Surface this before applying the undo. |
-| `bidding-target-tune` | yes | `update` `target_cpa.target_cpa_micros` / `target_roas.target_roas` back to `metadata.previous_target_micros` / `metadata.previous_target_roas` + matching `updateMask`. Single-step ±15% cap doesn't apply to undo (restoring is exact). |
-| `campaign-setting-update` | yes | `update` the changed field(s) back to `metadata.previous_*` values + identical `updateMask`. For `geo_target_type_setting.positive_geo_target_type`: PRESENCE → PRESENCE_OR_INTEREST flip is exact-reversible. |
+| `keyword-pause`         | yes — **drift-checked** | `update` `status: ENABLED` + `updateMask: status` against each criterion resource name. Drift check (see above): refuse if the criterion's live status doesn't match the apply's pre or post. |
+| `campaign-toggle`       | yes — **drift-checked** | `update` flipping `status` back (PAUSED → ENABLED or vice-versa) + `updateMask: status`. Drift check: refuse if the campaign's live status differs from both the apply's pre and post. |
+| `ad-toggle`             | yes — **drift-checked** | `update` flipping `status` back + `updateMask: status`. Drift check: refuse if the ad's live status differs from both pre and post. |
+| `bid-adjust`            | yes — **drift-checked** | If the original proposal's `metadata.previous_modifier` was null: `remove` the criterion (created by the original). Else `update` `bidModifier` back to the previous value + `updateMask: bidModifier`. Drift check on the live `bid_modifier`: refuse if it differs from both the apply's pre and post (operator manually re-tuned the modifier in the dashboard). |
+| `conversion-action-mod` | yes (best-effort) — **drift-checked** | `update` fields back to their pre-change values from the original proposal's `metadata.previous_*`. If those weren't recorded, refuse with explanation; the operator must restore manually. Drift check **per field**: query the conversion action's current values; refuse the field's inverse if it differs from both pre and post (operator manually edited the action in the dashboard). |
+| `bidding-strategy-shift` | yes (best-effort) — **drift-checked** | `update` `bidding_strategy_type` + matching target back to `metadata.previous_strategy` + `metadata.previous_target_*`. Drift check: query the campaign's current `bidding_strategy_type`; refuse if it differs from both pre and post (operator switched strategy manually). **Warn loudly**: a strategy switch invalidates the strategy's learning, so even a perfect inverse means the campaign re-enters `LEARNING_NEW` for ~14 days. Surface this before applying the undo. |
+| `bidding-target-tune` | yes — **drift-checked** | `update` `target_cpa.target_cpa_micros` / `target_roas.target_roas` back to `metadata.previous_target_micros` / `metadata.previous_target_roas` + matching `updateMask`. Single-step ±15% cap doesn't apply to undo (restoring is exact). Drift check: query the campaign's current target; refuse if it differs from both pre and post (operator manually tuned the target in the dashboard). |
+| `campaign-setting-update` | yes — **drift-checked** | `update` the changed field(s) back to `metadata.previous_*` values + identical `updateMask`. For `geo_target_type_setting.positive_geo_target_type`: PRESENCE → PRESENCE_OR_INTEREST flip is exact-reversible. Drift check **per field** in the original updateMask: refuse the field's inverse if its live value differs from both pre and post. |
 | `customer-match-upload` | **NO**       | Refuse with: "customer-match-upload is non-invertible. Google's offline matching can't be cleanly reversed mid-run. Manually scrub via a new proposal — see `examples/customer-match.md` 'Inverse for /undo' section." |
 | `recommendation-apply`  | **NO**       | Refuse with: "recommendation-apply is non-invertible. Google's apply may have spawned downstream entities (assets, links, criteria). Print the spawned resource names from the change-log; draft kind-specific undos against each (e.g. `assets-unlink` for spawned extension links)." |
 | `recommendation-dismiss`| n/a          | No inverse needed — recs naturally resurface when conditions warrant. The operator can wait or `/recommendations` again to see if it's back. |

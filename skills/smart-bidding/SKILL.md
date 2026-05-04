@@ -28,7 +28,7 @@ strategy:
 | Conversions, signups, leads (no per-conv value tracked) | `MAXIMIZE_CONVERSIONS` (no target) or `TARGET_CPA` |
 | Revenue, paid signups, e-commerce sales (per-conv value tracked) | `MAXIMIZE_CONVERSION_VALUE` or `TARGET_ROAS` |
 | Visibility / brand presence | `TARGET_IMPRESSION_SHARE` (top of page) |
-| Tight cost control, low-volume account | `MANUAL_CPC` + `ENHANCED_CPC` |
+| Tight cost control, low-volume account | `MANUAL_CPC` (plain — see ECPC note in check #3) |
 | Click volume (rare for SaaS) | `MAXIMIZE_CLICKS` |
 
 🔴 **critical** if `bidding_strategy_type = MAXIMIZE_CLICKS` AND
@@ -63,7 +63,7 @@ cross-campaign budget allocation harder.
 | `LEARNING_CAMPAIGN_KEYWORDS_CHANGE` | Structural change re-triggered learning | 🟡 short-term |
 | `LIMITED_BY_BID_CEILING` | Bid ceiling capping the strategy | 🔴 raise the ceiling or accept the loss |
 | `LIMITED_BY_BID_FLOOR` | Bid floor capping (rare) | 🔴 lower the floor |
-| `MISCONFIGURED_ZERO_ELIGIBILITY` | No conversions in lookback window — strategy can't function | 🔴 revert to MANUAL_CPC + ECPC until volume returns |
+| `MISCONFIGURED_ZERO_ELIGIBILITY` | No conversions in lookback window — strategy can't function | 🔴 revert to plain `MANUAL_CPC` until volume returns (not `ENHANCED_CPC` — see check #3) |
 | `MISCONFIGURED_CONVERSION_TYPES` | Conv actions misconfigured — see conversion-health | 🔴 fix conv tracking first |
 | `NOT_ACTIVE` | No active campaigns/budgets/keywords attached | 🔴 structural issue |
 
@@ -76,18 +76,26 @@ is too low to converge — which is check #3.
 
 ### 3. Volume floor for the chosen strategy
 
-`TARGET_CPA` and `MAXIMIZE_CONVERSIONS` need ≥ 30 conv / 30d to
-stabilize, ≥ 50 to perform reliably (Google's published guidance).
+**Canonical volume bands.** This is the single source of truth for
+what counts as "enough conversions" in this plugin. `conversion-health`
+check #8 references these same numbers per primary action.
 
-`TARGET_ROAS` and `MAXIMIZE_CONVERSION_VALUE` need ≥ 50 conv with
-values / 30d, ideally ≥ 100.
+| Band | tCPA / MaxConversions | tROAS / MaxConvValue |
+|---|---|---|
+| 🔴 below floor | < 30 / 30d | < 50 / 30d |
+| 🟡 floor → 2× floor | 30–60 / 30d | 50–100 / 30d |
+| 🟢 stable | ≥ 60 / 30d | ≥ 100 / 30d |
 
 🔴 **critical** if a campaign's 30-day primary conversion count is
 below the floor for its current strategy — the strategy is operating
 in noise. Recommend either:
-1. Switch to `MANUAL_CPC` + `ENHANCED_CPC` until volume builds, OR
+1. Switch to plain `MANUAL_CPC` until volume builds, OR
 2. Loosen targeting (broader match, expand keywords) to grow volume,
    accepting temporary CPA/ROAS variance.
+
+(Do not recommend `ENHANCED_CPC` as the fallback — Google has been
+phasing it out since 2024 and new strategy creates increasingly fall
+back to MANUAL_CPC without the ECPC bid-uplift layer.)
 
 🟡 **warning** if 30-day volume is between floor and 2× floor — the
 strategy works but with high variance. Be careful interpreting weekly
@@ -141,11 +149,11 @@ The plugin can draft these via the existing `change-execution` kinds
   Single-step cap: ±15% per change. Larger swings need operator
   judgment in chat.
 
-- **Switch to `MANUAL_CPC` + `ENHANCED_CPC`** when volume falls below
-  floor and a Smart Bidding strategy is misconfigured-zero-eligibility.
-  This is a campaign update; treat as a `campaign-toggle`-style
-  proposal but with explicit operator review (it's a strategic shift,
-  not just status flip).
+- **Switch to plain `MANUAL_CPC`** (no ECPC layer) when volume falls
+  below floor and a Smart Bidding strategy is misconfigured-zero-
+  eligibility. This is a campaign update; treat as a `campaign-toggle`-
+  style proposal but with explicit operator review (it's a strategic
+  shift, not just status flip).
 
 NOT drafted automatically:
 - **Switching from MAXIMIZE_CLICKS → TARGET_CPA** — strategy-class

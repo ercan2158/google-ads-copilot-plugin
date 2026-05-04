@@ -15,8 +15,15 @@ Run as the **manager** agent. Load the **gaql** and
    - Last-24h spend + conversions per campaign
    - Disapproved ads
    - Flatlined campaigns over the last 7 days
+   - **Conversion-action recent firing (regression check)** — per ENABLED
+     primary action, daily mean conversions for `[today-3, today]` vs
+     `[today-10, today-3]`
 3. Compute anomalies vs. same weekday last week (spend ±20%, conv ±50%,
-   any new disapproval, any new flatline).
+   any new disapproval, any new flatline). **Per-action regression
+   anomaly**: any primary conversion action where recent ≈ 0 AND prior
+   > 0 fires a 🔴 — the tag may have stopped firing on that action.
+   This is the highest-priority anomaly: surface first in TL;DR and
+   *do not* recommend any other action until investigated.
 4. Print to chat:
    - Line 1: `TL;DR: <plain-English summary, no jargon>`
    - Lines 2–N (max 5 lines): `<campaign>: €X spent, Y conv`

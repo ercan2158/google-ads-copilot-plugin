@@ -15,20 +15,30 @@ expansion toggle, asset group A/B testing) are UI-only.
 ## Volume-floor gate (decide if PMax should run at all)
 
 PMax burns budget at low volume because it's training a model across
-many surfaces simultaneously. Before recommending PMax expansion or
-applying a `PERFORMANCE_MAX_OPT_IN` recommendation:
+many surfaces simultaneously (Search, Display, YouTube, Discover,
+Gmail, Maps). The volume floor for PMax is meaningfully higher than
+for a single-surface Search campaign on the same strategy — the model
+has more dimensions to learn over.
 
-🔴 **refuse** if account-level conversions < 30/30d. PMax under this
-floor is shipping budget to the Display/Discover learning phase with
-no signal — almost guaranteed to underperform Search at the same spend.
+Before recommending PMax expansion or applying a `PERFORMANCE_MAX_OPT_IN`
+recommendation:
 
-🟡 **warning** if 30-50 conv/30d. PMax can work but expect 4-8 weeks
+🔴 **refuse** if account-level conversions < 50/30d (with values for
+ROAS-based PMax). The 30-conv floor that works for a Search-only
+tCPA campaign isn't enough for PMax — the model spreads thin across
+surfaces and shipping budget at this level produces noise, not learning.
+
+🟡 **warning** if 50–100 conv/30d. PMax can work but expect 4–8 weeks
 of LEARNING before it stabilizes. Recommend running parallel with
 existing Search campaigns rather than shifting budget from them.
 
-🟢 **healthy gate** if ≥ 50 conv/30d AND conversion tracking is healthy
+🟢 **healthy gate** if ≥ 100 conv/30d AND conversion tracking is healthy
 per `conversion-health` AND there's revenue value tracked (PMax leans
 heavily on `MAXIMIZE_CONVERSION_VALUE` or `TARGET_ROAS`).
+
+These bands are stricter than the canonical bands in `smart-bidding`
+check #3 (which apply to single-surface Search) — PMax's multi-surface
+model needs more signal to converge.
 
 ## Read each PMax campaign separately
 

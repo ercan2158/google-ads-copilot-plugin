@@ -34,15 +34,17 @@ SELECT
   metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.impressions
 FROM search_term_view
 WHERE segments.date DURING LAST_30_DAYS
-  AND metrics.impressions > 100
+  AND metrics.clicks > 0
   AND metrics.conversions < 1
 ORDER BY metrics.cost_micros DESC
 ```
 
-The `> 100` impression floor matches the threshold `search-term-mining`
-applies when classifying high-spend-zero-conv candidates — keeping the
-retrieval and the action threshold aligned avoids surfacing rows that
-mining will silently drop.
+The `clicks > 0` retrieval floor catches every query that actually
+spent money, regardless of impression volume. The mining skill then
+applies the real classification gate: `cost ≥ target_cpa × 0.3` AND
+`clicks ≥ max(10, target_cpa × 0.5 / avg_cpc)`. Anchoring to the
+operator's target_cpa rather than impressions or budget-percentage is
+how the threshold scales sensibly across €500/mo and €50k/mo accounts.
 
 ## Disapproved ads
 
@@ -156,6 +158,28 @@ FROM customer
 WHERE segments.date DURING LAST_30_DAYS
 ```
 
+## Conversion-action recent firing (regression check)
+
+For `conversion-health` check #9. Compares the trailing 72h vs the
+prior 7d to detect tag-firing regressions independently of the volume
+floor in check #8 — a config-clean account whose tag broke last Tuesday
+looks identical to a low-volume account through the rest of the audit.
+
+```sql
+SELECT
+  segments.conversion_action,
+  segments.conversion_action_name,
+  segments.date,
+  metrics.conversions, metrics.all_conversions
+FROM customer
+WHERE segments.date DURING LAST_14_DAYS
+ORDER BY segments.conversion_action, segments.date DESC
+```
+
+Bucket dates into `[today-3, today]` (recent) and `[today-10, today-3]`
+(prior). Compute daily means per primary action. Flag 🔴 if recent ≈ 0
+AND prior > 0; 🟡 if recent < 50% of prior AND prior had ≥ 10 total.
+
 ## Customer-level conversion tracking settings
 
 Enhanced conversions and customer-data-terms acceptance live on the
@@ -227,6 +251,60 @@ FROM bidding_strategy
 WHERE bidding_strategy.status = 'ENABLED'
 ```
 
+## Network settings (Search Partners / Display Expansion footgun)
+
+Display Network expansion left enabled on a Search campaign silently
+swallows 10–30% of the budget on inventory the operator never intended
+to buy. Surface per-campaign:
+
+```sql
+SELECT
+  campaign.id, campaign.name, campaign.advertising_channel_type,
+  campaign.network_settings.target_google_search,
+  campaign.network_settings.target_search_network,
+  campaign.network_settings.target_content_network,
+  campaign.network_settings.target_partner_search_network
+FROM campaign
+WHERE campaign.status = 'ENABLED'
+```
+
+For SEARCH campaigns, `target_content_network = true` is the footgun
+— Display expansion. The audit flags 🔴 unless `context/budget-policy.md`
+explicitly declares Display participation. Drives a `campaign-setting-update`
+proposal flipping it to `false`.
+
+`target_partner_search_network = true` is Search Partners — usually
+acceptable but flag 🟡 if conv-tracking can't break out partner perf
+and a recent week's spend on partners looks disproportionate.
+
+## Auto-apply recommendations (silent-mutation footgun)
+
+Google can auto-apply recommendations to the account if the operator
+left auto-apply on. This bypasses the always-propose safety model
+entirely — Google ships changes the plugin never sees a chance to
+review.
+
+Auto-apply settings live behind a UI toggle that the v23 API exposes
+inconsistently across accounts. Try:
+
+```sql
+SELECT
+  customer.id,
+  customer.optimization_score,
+  customer.optimization_score_weight
+FROM customer
+```
+
+Pair with the dashboard recommendations history (Tools & Settings →
+Recommendations → History). If the API path returns `INVALID_FIELD` for
+the auto-apply opt-in fields in the operator's API version, the audit
+surfaces a manual-check item: "Verify Tools & Settings →
+Recommendations → auto-apply is OFF; if any category is opted-in,
+disable it before relying on this plugin's review cycle."
+
+Drives a `campaign-setting-update`-style proposal once the API exposes
+the toggle reliably; until then, manual UI fix.
+
 ## Geo-targeting setting (the LOCATION_OF_PRESENCE footgun)
 
 ```sql
@@ -280,12 +358,18 @@ brand term) for non-branded performance. Compare:
 | Slice | What good looks like |
 |---|---|
 | Branded CTR | ≥ 8% (high intent, high relevance) |
-| Branded CPA | < 30% of non-branded CPA |
+| Branded CPA | 20–60% of non-branded CPA (B2B SaaS range) |
 | Branded impression share | ≥ 90% (you should be dominating your own brand SERP) |
 
+Severity for the CPA ratio: 🟡 if branded CPA > 50% of non-branded
+(efficiency degraded — likely creative or landing-page); 🔴 only if
+> 100% (brand more expensive than non-brand — actually broken).
+
 🔴 if branded impression share < 70% — competitors are stealing cheap
-brand-search conv. Recommend a dedicated brand campaign (out of v1
-mutation scope, but flag in the audit).
+brand-search conv. The fix is bidding fixes on brand-bearing campaigns,
+not necessarily a dedicated brand campaign — see `account-audit`
+Section 9 for when isolation actually pays (typically only when brand
+spend > 15% of total search spend).
 
 🟡 if no branded clicks observed at all AND the brand has been live
 for ≥ 6 months — either the brand has zero search demand (concerning
@@ -530,6 +614,63 @@ ORDER BY metrics.cost_micros DESC
 `ad_strength` enum: `PENDING`, `NO_ADS`, `POOR`, `AVERAGE`, `GOOD`,
 `EXCELLENT`. Flag any high-spend ad with `POOR` or `AVERAGE` —
 `creative-management` then drills into specific LOW assets.
+
+## Asset extension coverage (sitelinks / callouts / structured snippets)
+
+RSAs without ≥ 4 attached sitelinks lose roughly 10–15% CTR vs ones
+with them. Pull per-campaign extension counts:
+
+```sql
+SELECT
+  campaign.id, campaign.name,
+  campaign_asset.asset, campaign_asset.field_type, campaign_asset.status
+FROM campaign_asset
+WHERE campaign.status = 'ENABLED'
+  AND campaign_asset.status = 'ENABLED'
+  AND campaign_asset.field_type IN ('SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET')
+```
+
+Aggregate by `(campaign_id, field_type)`. Pair with account-level
+extensions on `customer_asset` so the audit doesn't flag a campaign
+whose extensions are inherited from the account:
+
+```sql
+SELECT
+  customer_asset.asset, customer_asset.field_type, customer_asset.status
+FROM customer_asset
+WHERE customer_asset.status = 'ENABLED'
+  AND customer_asset.field_type IN ('SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET')
+```
+
+Effective coverage per campaign = campaign-level + customer-level.
+Flag 🟡 if effective `SITELINK` count < 4 or `CALLOUT` count < 4 on
+any ENABLED Search campaign — drives an `assets-add` + `assets-link`
+proposal pair (the existing assets flow).
+
+## Ad group keyword cohesion
+
+Junk-drawer ad groups (one ad group, many themes, dozens of keywords)
+break RSA pinning and tank quality score because no single ad copy
+can be relevant to all themes simultaneously. Pull keywords per ad
+group:
+
+```sql
+SELECT
+  campaign.id, campaign.name,
+  ad_group.id, ad_group.name,
+  ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type
+FROM keyword_view
+WHERE campaign.status = 'ENABLED'
+  AND ad_group.status = 'ENABLED'
+  AND ad_group_criterion.status = 'ENABLED'
+```
+
+Then per ad group: count keywords, stem each text (strip plural,
+possessive, common stop-words), count distinct stem-roots. Healthy
+themed ad group = 5–15 keywords sharing 1–2 stem roots. The audit
+flags > 15 keywords AND > 2 stem roots as 🟡 (junk drawer). The fix
+is a manual ad-group split — out of v1 mutation scope; the audit
+surfaces the diagnostic.
 
 ## Time-of-day & day-of-week performance (last 30d)
 

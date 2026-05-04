@@ -26,8 +26,28 @@ For each `search_term`:
    `context/product-positioning.md` says you don't bid on competitors →
    negative candidate.
 3. **High spend, zero conv** alone is not enough — there's natural
-   variance. Threshold: ≥ €X per query where X = max(€5, daily budget × 0.05),
-   or ≥ 100 impressions and 0 conv over 30 days.
+   variance. The threshold has to be anchored to *what one conversion is
+   worth*, not to budget percentage or impression count. Read
+   `target_cpa` from `context/kpi-tree.md` (the operator's target cost
+   per conversion). A query is a negative candidate when:
+
+   `cost ≥ target_cpa × 0.3` AND `clicks ≥ max(10, target_cpa × 0.5 / avg_cpc)` AND `conversions = 0`
+
+   Rationale:
+   - **Cost gate** at 30% of one conversion's worth: less than that and
+     you haven't given the query a fair chance to convert.
+   - **Click gate** ensures you're measuring intent (clicks), not
+     impressions. A query with 200 impressions and 1 click 0 conv is
+     statistical noise, not waste.
+   - **Impressions are NOT a gate.** Impressions don't represent chances
+     to convert; clicks do. The old `≥ 100 impressions` rule fired on
+     queries that never even gave a user the chance to engage.
+
+   If `target_cpa` is absent from `kpi-tree.md`, fall back to a
+   data-driven derivation: median CPA across primary conversions in the
+   last 30 days. If the account has no conversions yet, skip
+   high-spend-zero-conv mining entirely — there's no signal to mine
+   against; rely on rules 1 (off-ICP) and 2 (brand collision) only.
 
    **Conversion-lag adjustment.** Conversions for the last N days are
    still firing in. Read `context/kpi-tree.md` for `lag_days` (default
@@ -54,13 +74,21 @@ A reference table for the patterns above. Substitute `<product>`,
 | `<product> excel template`        | Product mismatch (rule 1)     | PHRASE on `excel template` | Per-campaign  | We replace Excel; "template" seekers want a workbook, not software. Catches all `excel template X` variants.                                  |
 | `<product> jobs` / `<product> careers` | Off-intent (rule 1)      | PHRASE on `jobs`, PHRASE on `careers` | Per-campaign  | Recruitment query; never buying intent. Two narrow PHRASE negatives, not one BROAD.                                                          |
 
-## Pick match type
+## Pick match type (for negatives)
+
+This guidance applies to **negative keywords only**. Positive-side
+match-type strategy is the inverse in 2026 — accounts with conv volume
+want broad + Smart Bidding, accounts without want exact. That's a
+different decision and lives in `account-audit` Section 7 (structure)
+and `smart-bidding`.
+
+For negatives:
 
 - **EXACT** — the query is a one-off exact match you want to block ONLY for that wording.
 - **PHRASE** — a recurring theme word (e.g. "free", "tutorial") you want to block whenever it appears in any query.
 - **BROAD** — almost never. Reserve for clearly off-topic root words.
 
-When in doubt, prefer PHRASE > EXACT > BROAD.
+When in doubt on a negative, prefer PHRASE > EXACT > BROAD.
 
 ### Close-variants advisory
 

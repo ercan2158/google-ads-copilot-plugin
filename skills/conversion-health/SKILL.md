@@ -50,8 +50,14 @@ e-commerce + lead-gen hybrid SaaS, but flag for operator review.
 
 ### 2. Counting type vs conversion semantics
 
-`counting_type` ∈ `ONE_PER_CLICK`, `MANY_PER_CLICK`. Default is
-`MANY_PER_CLICK` but the right choice is action-dependent:
+`counting_type` ∈ `ONE_PER_CLICK`, `MANY_PER_CLICK`. Google's UI now
+sets a per-category default rather than the historical
+`MANY_PER_CLICK` blanket default (PURCHASE-category actions default to
+"every" / `MANY_PER_CLICK`; LEAD/SIGNUP-category actions default to
+"one" / `ONE_PER_CLICK`). The defaults are reasonable for e-commerce
+but the right choice for B2B SaaS is action-dependent and frequently
+*overrides* the category default — a paid SaaS signup is one
+conversion per user, not one per checkout event:
 
 | Action type | Right counting_type | Why |
 |---|---|---|
@@ -74,8 +80,8 @@ recommended default since 2023:
 
 | Value | Meaning | When right |
 |---|---|---|
-| `GOOGLE_SEARCH_ATTRIBUTION_DATA_DRIVEN` | Data-driven (DDA) | Default for accounts with ≥300 conv/30d on the action; uses ML to credit touches |
-| `GOOGLE_ADS_LAST_CLICK` | Last click within Google Ads | Fallback when conv volume too low for DDA |
+| `GOOGLE_SEARCH_ATTRIBUTION_DATA_DRIVEN` | Data-driven (DDA) | Google's default since mid-2023 for new conversion actions. The historical 300-conv minimum to *use* DDA was removed; DDA now operates at lower volumes by blending in cross-account learning. The model still produces better signal at high volume, but there's no reason to default *off* of it at low volume. |
+| `GOOGLE_ADS_LAST_CLICK` | Last click within Google Ads | Right when DDA's `data_driven_model_status` returns anything other than `AVAILABLE` (see below), or when the operator explicitly wants last-click semantics for reporting consistency with another system. |
 | `EXTERNAL` | Imported (e.g. GA4 last-click, custom model) | Conv imported from GA4/CRM with that source's model |
 
 🟡 **warning** if `attribution_model = EXTERNAL` AND
@@ -173,18 +179,66 @@ setting `default_value` to expected first-year LTV per lead.
 
 ### 8. Conversion volume per action (statistical health)
 
-For each `primary_for_goal = true` action, check 30-day volume:
+For each `primary_for_goal = true` action, check 30-day volume against
+the canonical volume bands. **The bands are defined in
+`smart-bidding/SKILL.md` check #3 (volume floor for the chosen
+strategy) — this check uses the same numbers**, applied per-action
+rather than per-campaign-strategy:
 
-🔴 **critical** if a primary action has < 15 conversions in the last
-30 days — too low for any meaningful bid optimization, especially
-tCPA/tROAS. Either increase budget, switch to broader-match strategy,
-or merge with a related action.
+| Band | tCPA / MaxConversions | tROAS / MaxConvValue |
+|---|---|---|
+| 🔴 below floor | < 30 / 30d | < 50 / 30d |
+| 🟡 floor → 2× floor | 30–60 / 30d | 50–100 / 30d |
+| 🟢 stable | ≥ 60 / 30d | ≥ 100 / 30d |
 
-🟡 **warning** if 15–30 conversions/30d — Smart Bidding is operating
-at the lower volume edge; expect higher CPA variance.
+Below-floor primary actions fail check #8 regardless of which strategy
+is currently attached — they're not generating enough signal for any
+Smart Bidding strategy to converge on. The fix is volume-first
+(broader match, increased budget, merged actions), not strategy-tuning.
 
-🟢 **healthy** if ≥ 50 conversions/30d (Google's recommended floor for
-tCPA stability) per primary action.
+The previous "<15 critical" cliff was too lenient — 14 conv/30d on a
+tCPA campaign is operating in noise. If both skills audit the same
+account, they should now agree on the verdict for each primary action.
+
+### 9. Recent firing (regression detection)
+
+Checks #1–8 audit *configuration*. This audits *firing*. The plugin
+sees the same field values whether the tag fired yesterday or went
+silent three weeks ago — a broken tag (post-deploy GCLID strip, GA4
+server-side pause, CSP block, consent-mode change) reads at the API
+config layer as healthy and only surfaces as "low volume" through
+check #8. That's the wrong fix.
+
+Pull "Conversion-action recent firing (regression check)" from `gaql`.
+Per ENABLED primary action, compare:
+
+- `recent`: daily mean conversions over `[today-3, today]`
+- `prior`: daily mean conversions over `[today-10, today-3]`
+
+🔴 **critical** if `recent == 0` AND `prior > 0`. The tag may have
+stopped firing. Surface in the audit's TL;DR **before any other
+finding**: "🔴 conversion tracking may be broken on `<action>` —
+investigate before acting on any other recommendation." Smart Bidding
+strategy verdicts, search-term mining, budget pacing all stand on a
+signal that just dropped.
+
+🟡 **warning** if `recent < 0.5 × prior` AND `prior` had ≥ 10
+conversions over the 7d window — meaningful regression, not noise.
+Common causes: deploy stripped a tag, GA4 import paused, consent-mode
+banner change reduced opt-in rate.
+
+🟢 **healthy** if `recent ≥ 0.5 × prior`, OR both are statistically
+zero in a low-volume account (defer to check #8 there — a historically
+0-conv action is a volume problem, not a regression).
+
+This check **supersedes** check #8 when low volume is *new*. An account
+that dropped from 60 to 8 conv/30d last Tuesday is a tag problem;
+recommending "switch to MANUAL_CPC until volume returns" (check #8 +
+smart-bidding) treats the symptom and degrades a previously-fine
+campaign.
+
+The plugin does NOT auto-draft fixes for this finding — tag deployment
+is out-of-band. Surface and stop.
 
 ## Enhanced conversions check
 

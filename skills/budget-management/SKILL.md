@@ -91,5 +91,23 @@ always-propose).
 
 ## Cap
 
-Never propose a single-step change > 50% of current budget. If the math
-says +200%, propose +50% with a note "next week consider another step."
+Two caps, depending on the campaign's bidding strategy. Pull
+`bidding_strategy_type` from the "Bidding strategy diagnostic" gaql
+query before drafting:
+
+- **Smart Bidding campaigns** (`TARGET_CPA`, `TARGET_ROAS`,
+  `MAXIMIZE_CONVERSIONS`, `MAXIMIZE_CONVERSION_VALUE`): cap a single-step
+  budget change at **±20%**. Larger steps trigger
+  `LEARNING_BUDGET_CHANGE` system status (see `smart-bidding/SKILL.md`
+  check #2) and re-enter the strategy into a 7-day learning phase. A
+  +50% step on a tCPA campaign costs you a week of stable performance
+  — almost always a worse trade than two staged +20% steps a week
+  apart.
+- **Manual / non-Smart-Bidding campaigns** (`MANUAL_CPC`, etc.): cap at
+  **±50%**. No learning phase to disrupt; the cap is purely about
+  giving the operator time to react if the math is wrong.
+
+If the underlying recommendation calls for a larger move than the cap
+allows, propose the capped step with a note: "next week consider
+another step to reach the target of €X." Never propose two budget
+changes for the same campaign in a single audit run.
