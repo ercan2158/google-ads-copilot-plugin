@@ -16,7 +16,13 @@ healthy. Run them first; if they're 🔴, cap section 4-10 findings as
 
 3. **Smart-bidding health** — apply `smart-bidding` skill. For each ENABLED campaign: bidding_strategy_type vs kpi-tree, bidding_strategy_system_status (LEARNING / LIMITED / MISCONFIGURED / NOT_ACTIVE), conversion-volume floor (≥30 for tCPA, ≥50 for tROAS), realized vs target hit-rate. Misalignments here move the dial more than mining ever will. May draft one bidding-strategy proposal per audit run.
 
-4. **Search terms** — full mining via `search-term-mining` skill, including the close-variants advisory and lag-aware conversion thresholds. Cross-reference with branded-vs-non-branded performance (Section 9).
+4. **Search terms + negatives sprawl** — full mining via `search-term-mining` skill, including the close-variants advisory and lag-aware conversion thresholds. Cross-reference with branded-vs-non-branded performance (Section 9).
+   - **Negatives sprawl audit (multi-campaign accounts).** Run "Shared negative-keyword lists" + "Negatives sprawl detection" queries from `gaql`. Group per-campaign negatives by `(keyword.text, keyword.match_type)`. Flag 🟡 when:
+     - the same `(text, match_type)` appears in ≥ 3 ENABLED Search campaigns, AND
+     - the account has ≥ 5 ENABLED Search campaigns (below this, per-campaign maintenance overhead is fine), AND
+     - no existing `shared_set` of type `NEGATIVE_KEYWORDS` already contains the term.
+     Drives a `negative-list-create` + `negative-list-add-keyword` + `negative-list-attach` paired-proposal flow (see `change-execution/examples/shared-negatives.md`). Cap: 1 list-creation proposal per audit run; subsequent runs add keywords to the existing list.
+   - **Orphaned shared lists.** Flag 🟡 any `shared_set` with `reference_count = 0` (created and never attached, or all attachments removed) — recommend `negative-list-delete` or `negative-list-attach` to fix.
 
 5. **Creative + asset extensions** — RSA asset performance via gaql skill; flag LOW assets. Pair with `ad_group_ad.ad_strength` (gaql "Ad-strength" query) — high-spend ads with `POOR` or `AVERAGE` ad_strength go to the top of the action list even before per-asset LOW analysis. **Asset extension coverage:** pull "Asset extension coverage" from `gaql` and the paired `customer_asset` query. For each ENABLED Search campaign, compute effective sitelink + callout counts (campaign-level + customer-level inherited). Flag 🟡 on any campaign with effective `SITELINK` or `CALLOUT` count < 4 — drives an `assets-add` + `assets-link` proposal pair via `creative-management`'s existing assets flow.
 

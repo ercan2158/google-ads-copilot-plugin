@@ -129,8 +129,59 @@ The fenced ```json block at the bottom is the **executable** part.
 | `audience-attach` | `/monthly`, `/recommendations` (PMax) | POST `assetGroupSignals:mutate` | `create` link with `assetGroup` + `audience: { customAudience \| userList \| ... }` | `pmax` skill — attach a signal in observation mode for PMax; or attach in OBSERVATION on Search ad groups via `adGroupCriteria:mutate` audience criterion |
 | `audience-detach` | (paired with attach for /undo) | POST `assetGroupSignals:mutate` | `remove` link `resourceName` | inverse of `audience-attach` |
 | `customer-negative-criterion-add` | `/recommendations` (PMax), `/monthly` | POST `customerNegativeCriteria:mutate` | `create` negative keyword / placement / etc. at customer level | the only API-supported way to negative-out a query from a PMax campaign as of v23; affects ALL campaigns (not just PMax) — flag this in TL;DR |
+| `negative-list-create` | `/search-terms`, `/weekly`, `/monthly` | POST `sharedSets:mutate` | `create` `{name, type:'NEGATIVE_KEYWORDS'}` | shared negatives flow — first of 3 paired proposals (create → add-keywords → attach) — see [`examples/shared-negatives.md`](examples/shared-negatives.md) |
+| `negative-list-add-keyword` | `/search-terms`, `/weekly`, `/monthly` | POST `sharedCriteria:mutate` | `create` `{sharedSet, keyword:{text, matchType}, negative:true}` (one op per keyword) | typically paired with `negative-list-create` via `metadata.depends_on`; can also stand alone to grow an existing list |
+| `negative-list-remove-keyword` | (operator request) | POST `sharedCriteria:mutate` | `remove` `<sharedCriterion resourceName>` | rare — pulling a keyword from a shared list affects every attached campaign |
+| `negative-list-attach` | `/search-terms`, `/weekly`, `/monthly` | POST `campaignSharedSets:mutate` | `create` `{campaign, sharedSet}` (one op per campaign attachment) | third proposal in the create→add→attach flow; references the sharedSet from `negative-list-create` via `<resourceName from proposal X op N>` |
+| `negative-list-detach` | (operator request), `/undo` | POST `campaignSharedSets:mutate` | `remove` `<campaignSharedSet resourceName>` | inverse of `negative-list-attach` |
+| `negative-list-delete` | (operator request) | POST `sharedSets:mutate` | `remove` `<sharedSet resourceName>` | high blast radius — cascades through every `shared_criterion` and every `campaign_shared_set` link. **Sets `confirmation_required: explicit_yes` in the envelope** (operator must retype the proposal_id at apply time). **Non-invertible** — recreating an identical list re-issues different resource names. |
+| `asset-group-asset-link` | `/monthly`, `/recommendations` (PMax) | POST `assetGroupAssets:mutate` | `create` `{assetGroup, asset, fieldType}` (link an existing asset to a PMax asset group with a field type like HEADLINE / DESCRIPTION / LONG_HEADLINE / MARKETING_IMAGE / LANDSCAPE_LOGO / YOUTUBE_VIDEO) | `pmax` skill — pair with `assets-add` to refresh creative on a POOR/AVERAGE asset group; see [`examples/asset-group-flow.md`](examples/asset-group-flow.md) |
+| `asset-group-asset-unlink` | `/monthly`, (operator request) | POST `assetGroupAssets:mutate` | `remove` `<assetGroupAsset resourceName>` | inverse of `asset-group-asset-link`; or pause an underperforming asset on its asset group without deleting the asset entity |
+| `asset-group-toggle` | (operator request) | POST `assetGroups:mutate` | `update` `status: ENABLED \| PAUSED` + `updateMask: status` | pause an underperforming PMax asset group; one asset group per proposal |
+| `asset-group-create` | (operator request, `/monthly` for theme-split) | POST `assetGroups:mutate` | `create` `{campaign, name, finalUrls, status:'PAUSED'}` (asset linking happens via paired `asset-group-asset-link` proposals) | high blast radius — sets `confirmation_required: explicit_yes`. Always created `PAUSED`; operator manually flips to ENABLED in the dashboard after reviewing the asset linkage. v1 limit: max 1 per audit run |
+| `final-url-exclusion-add` | `/monthly`, `/recommendations` | POST `campaignCriteria:mutate` | `create` `{campaign, negative:true, webpage:{conditions:[{operand:'URL', operator:'EQUALS' \| 'CONTAINS', argument:'<url-or-fragment>'}]}}` | block specific URLs from PMax/Display serving (e.g. `/careers`, `/login`, `/legacy/*`); works for any campaign type but most-needed in PMax where keyword-level exclusion isn't available |
+| `brand-list-create` | `/monthly`, (operator request) | POST `assetSets:mutate` | `create` `{name, type:'BRAND_LIST'}` followed by paired `assetSetAsset:mutate` ops to populate with `BRAND` assets — multi-step flow, see [`examples/brand-list.md`](examples/brand-list.md) | newer PMax feature (~2024); availability varies by API version. **`confirmation_required: explicit_yes`** since brand-list misconfiguration affects all attached PMax campaigns |
+| `brand-list-attach` | `/monthly`, (operator request) | POST `campaignAssetSets:mutate` | `create` `{campaign, assetSet}` linking a brand list to a PMax campaign | paired with `brand-list-create` via `metadata.depends_on` |
 
-Out of scope for v1 (still): `campaign-create`, `ad-group-create`, `ad-create-from-scratch` — anything that builds new structural entities. The plugin assumes the campaign skeleton exists; it tunes within it.
+Out of scope (still): `campaign-create`, `ad-group-create`,
+`ad-create-from-scratch`, listing-group / product-feed structure
+(retail PMax) — anything that builds new top-level structural entities
+or touches feed shapes. The plugin assumes the campaign skeleton
+exists; it tunes within it. `asset-group-create` is the one
+exception — added in 0.3.0 because PMax asset groups are the closest
+PMax analogue to a Search ad group, and theme-splitting is the only
+way to act on `campaign_search_term_insight` category divergence.
+
+## High-blast-radius envelope flag
+
+Some kinds carry irreversible or wide-affecting consequences that
+warrant a second-factor gate beyond the standard y/n confirmation.
+Drafters add `confirmation_required: "explicit_yes"` to the envelope:
+
+```json
+{
+  "proposal_id": "...",
+  "kind": "negative-list-delete",
+  "confirmation_required": "explicit_yes",
+  ...
+}
+```
+
+When `bin/apply --confirm` sees this flag, it requires the operator to
+**retype the proposal_id verbatim** instead of accepting a single `y`.
+Mistyping aborts. This is a typing-friction safeguard — it doesn't
+prevent a determined operator from proceeding, but it stops accidental
+applies on high-blast operations.
+
+Kinds that MUST set this flag:
+- `negative-list-delete` (cascades through criteria + campaign links)
+- `asset-group-create` (creates structural entity in PMax)
+- `brand-list-create` (affects every attached PMax campaign once linked)
+
+Drafters MAY set this flag on any other kind when the proposal touches
+a high-spend campaign or a customer-level resource. The standard
+flow with no flag still requires a y/n confirmation at apply time;
+explicit_yes is the upgraded gate for the high-blast subset.
 
 ## /google-ads-copilot:apply contract
 

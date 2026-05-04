@@ -16,8 +16,11 @@ search terms, creative, disapprovals + URL liveness), **conversion-health**
 
 1. Bind to workspace.
 2. Run focused audit (sections 1, 3, 4, 5 only — see audit skill).
-3. If search terms warrant: draft a `negatives` proposal per
-   search-term-mining + change-execution.
+3. If search terms warrant: draft per `search-term-mining` —
+   - per-campaign `negatives` for campaign-specific terms, OR
+   - the 3-step shared-list flow (`negative-list-create` →
+     `-add-keyword` → `-attach`) when ≥ 3 campaigns share a theme AND
+     the account has ≥ 5 Search campaigns. See `change-execution/examples/shared-negatives.md`.
 4. If budget pacing warrants: draft a `budget` proposal per
    budget-management + change-execution.
 5. Print chat:

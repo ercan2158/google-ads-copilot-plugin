@@ -44,7 +44,13 @@ treat its absence as "live").
    - Call: "${CLAUDE_PLUGIN_ROOT}/bin/ga" proxy <method> <endpoint> '<dry-run-body>'
    - If error: print Google's structured error, leave proposal in place, stop
 5. Print chat diff: "About to apply <kind>: <summary of operations>. Proceed? (y/n)"
-6. On 'y':
+   - **If proposal has `confirmation_required: "explicit_yes"`**, prompt
+     "Type the proposal_id verbatim to proceed (or anything else to
+     abort): ". Compare exact-string. Mistype → abort with "skipped
+     (confirmation token did not match)". This is the second-factor
+     gate for high-blast kinds (negative-list-delete, asset-group-create,
+     brand-list-create).
+6. On 'y' (or matching token for explicit_yes):
    - Build live body (no validateOnly, or validateOnly:false)
    - Call bin/ga proxy with the live body
    - For each op (or for the single non-batch call), append to
@@ -127,8 +133,9 @@ also touch in the dashboard:
 - `campaign-setting-update` (every updated field — `geo_target_type_setting.positive_geo_target_type`,
   `network_settings.*`, etc.)
 - `bid-adjust` (`bid_modifier` on the target criterion)
-- `keyword-pause` / `ad-toggle` / `campaign-toggle` (`status` —
-  flip-only inverse, drift = operator already toggled)
+- `keyword-pause` / `ad-toggle` / `campaign-toggle` /
+  `asset-group-toggle` (`status` — flip-only inverse, drift =
+  operator already toggled)
 
 Does NOT apply to additive `create` kinds. The inverse is `remove` by
 resource-name; if the operator already removed the resource externally,
@@ -137,7 +144,12 @@ the live mutate returns `RESOURCE_NOT_FOUND` and the change-log records
 
 - `negatives`, `keyword-add`, `creative-add`, `creative-pause` (re-link),
   `assets-add`, `assets-link`, `assets-unlink` (re-link), `audience-attach`,
-  `audience-detach` (re-link), `customer-negative-criterion-add`
+  `audience-detach` (re-link), `customer-negative-criterion-add`,
+  `negative-list-create`, `negative-list-add-keyword`,
+  `negative-list-attach`, `negative-list-detach`,
+  `asset-group-asset-link`, `asset-group-asset-unlink` (re-link),
+  `asset-group-create`, `final-url-exclusion-add`,
+  `brand-list-create`, `brand-list-attach`
 
 Per-kind rows below mark drift-checked kinds with **drift-checked**.
 The original `budget` rule already documents the full check verbatim
@@ -174,6 +186,19 @@ The inverse is a new proposal that goes through the normal apply flow.
 | `audience-attach`       | yes         | `audience-detach` (`remove` op) against the assetGroupSignal / adGroupCriterion `resourceName` returned by the original create. |
 | `audience-detach`       | yes         | `audience-attach` (`create` op) re-creating the link with the same audience + asset_group / ad_group from the original request. |
 | `customer-negative-criterion-add` | yes | `remove` op against each `customerNegativeCriterion` `resourceName` from the original response. Note: removing a customer-level negative re-enables the query across **all** campaigns, including any non-PMax campaigns that benefited from the block — surface in undo's TL;DR. |
+| `negative-list-create`        | yes (cascade-aware) | `remove` op on `sharedSets:mutate` against the `sharedSet` `resourceName`. **Cascades** through every `shared_criterion` and every `campaign_shared_set` link automatically; surface this in undo TL;DR. If any campaigns are still attached, also append a paired `negative-list-detach` proposal first so the change-log records the unlinking explicitly. |
+| `negative-list-add-keyword`   | yes | `remove` op on `sharedCriteria:mutate` against each `sharedCriterion` `resourceName` from the original response. The shared_set itself stays. |
+| `negative-list-remove-keyword` | yes | Re-`create` on `sharedCriteria:mutate` with the same `sharedSet` + `keyword:{text, matchType}` from the original request. Note: the recreated criterion gets a **new** resource_name; subsequent `/undo` chains that reference the original by name won't resolve. |
+| `negative-list-attach`        | yes | `negative-list-detach` (`remove` op) against each `campaignSharedSet` `resourceName` from the original response. |
+| `negative-list-detach`        | yes | `negative-list-attach` (`create` op) re-creating the link with the same `campaign` + `sharedSet` from the original request. |
+| `negative-list-delete`        | **NO** | Refuse with: "negative-list-delete is non-invertible. Recreating the deleted shared_set issues new resource names; every campaign_shared_set link that referenced the old set is gone forever. Manually re-create via `negative-list-create` + `negative-list-add-keyword` + `negative-list-attach` if you need it back." |
+| `asset-group-asset-link`      | yes | `asset-group-asset-unlink` (`remove` op on `assetGroupAssets:mutate`) against each link `resourceName` from the original response. The asset entity stays. |
+| `asset-group-asset-unlink`    | yes | `asset-group-asset-link` (`create` op) re-linking with the same `assetGroup` + `asset` + `fieldType` from the original request. |
+| `asset-group-toggle`          | yes — **drift-checked** | `update` flipping `status` back (PAUSED → ENABLED or vice-versa) + `updateMask: status`. Drift check: refuse if the asset group's live status differs from both the apply's pre and post (operator already toggled it in the dashboard). |
+| `asset-group-create`          | yes (cascade-aware) | `remove` op on `assetGroups:mutate` against the asset group `resourceName`. **Cascades** through every linked `asset_group_asset` and `asset_group_signal`. Refuse the undo if any linked asset_group_asset has been added since the original create — operator added work that the undo would silently destroy. Surface the count of linked assets in undo TL;DR. |
+| `final-url-exclusion-add`     | yes | `remove` op on `campaignCriteria:mutate` against each `campaignCriterion` `resourceName` from the original response. |
+| `brand-list-create`           | yes (cascade-aware) | `remove` op on `assetSets:mutate` against the `assetSet` `resourceName`. **Cascades** through every `asset_set_asset` and every `campaign_asset_set` link. If campaigns are still attached, append a paired `brand-list-detach` first. |
+| `brand-list-attach`           | yes | `remove` op on `campaignAssetSets:mutate` against each link `resourceName` from the original response. The asset set itself stays. |
 
 The undo proposal's `metadata.inverse_of: <original-id>` links the audit
 trail. The original applied proposal stays in `applied/` — both the

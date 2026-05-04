@@ -113,25 +113,112 @@ zero conversions; the *only* way to act on them in v1 is via an
 account-level negative-keyword list (PMax doesn't accept campaign-level
 negatives via the API as of v23).
 
-## Mutation surface (limited)
+### 4. Asset coverage check (per asset group)
 
-| What | API path | Plugin kind | Status |
+For each ENABLED asset group, query `asset_group_asset` to count assets
+by `field_type`. The plugin floors to clear LIMITED status (per
+[`change-execution/examples/asset-group-flow.md`](../change-execution/examples/asset-group-flow.md)):
+
+| Field type | Plugin floor | Google's required min |
+|---|---|---|
+| HEADLINE (≤30 chars) | ≥ 5 | 3 |
+| LONG_HEADLINE (≤90 chars) | ≥ 1 | 1 |
+| DESCRIPTION (≤90 chars) | ≥ 4 | 2 |
+| BUSINESS_NAME | ≥ 1 | 1 |
+| MARKETING_IMAGE | ≥ 4 | 1 |
+| SQUARE_MARKETING_IMAGE | ≥ 1 | 1 |
+| LOGO | ≥ 1 | 1 |
+| YOUTUBE_VIDEO | ≥ 1 | 0 (auto-gen if absent — usually off-brand) |
+
+🔴 if any asset group below Google's required minimum AND ad_strength
+is POOR — it's actually-not-serving territory. Drafts an
+`assets-add` + `asset-group-asset-link` paired flow per
+[`change-execution/examples/asset-group-flow.md`](../change-execution/examples/asset-group-flow.md).
+
+🟡 if assets are above Google's minimum but below the plugin floor —
+the asset group serves but ad_strength stays POOR/AVERAGE. Same paired
+flow, but operator decides whether to ship.
+
+### 5. Final-URL exclusion coverage
+
+PMax doesn't accept campaign-level negative keywords, but it DOES
+accept page-level URL exclusions via `campaign_criterion` of type
+`WEBPAGE`. These block specific URLs from PMax's final-URL expansion
+(careers, login, support, legacy paths).
+
+```sql
+SELECT
+  campaign.id, campaign.name,
+  campaign_criterion.criterion_id,
+  campaign_criterion.webpage.criterion_name,
+  campaign_criterion.webpage.conditions,
+  campaign_criterion.negative
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'WEBPAGE'
+  AND campaign_criterion.negative = TRUE
+  AND campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+  AND campaign.status = 'ENABLED'
+```
+
+🟡 if a PMax campaign has zero exclusions AND `context/persona-overrides.md`
+declares URLs that should never serve (careers, login, /legacy/*,
+support pages). Drafts a `final-url-exclusion-add` proposal per the
+declared list.
+
+The audit reads `context/persona-overrides.md` for a "URLs that should
+never serve" section. If absent, surface a recommendation to add one
+during bootstrap rather than auto-drafting.
+
+### 6. Asset-group theme split (operator-decision)
+
+When a single asset group spans conflicting themes (e.g.
+"manufacturing software" + "consulting services" in the same asset
+group), no single creative can serve both well — Smart Bidding learns
+on diluted signal, ad_strength stays AVERAGE.
+
+Detection signal: `campaign_search_term_insight.category_label` clusters
+that don't share lexical roots (per audit Section 7's stem-root logic
+adapted to category labels).
+
+The fix is splitting into 2+ asset groups via `asset-group-create` and
+redistributing audience signals + assets. **High blast radius** — sets
+`confirmation_required: explicit_yes`. v1 cap: max 1 split proposal
+per audit run. The created asset group is always `PAUSED`; operator
+flips to ENABLED in the dashboard after reviewing assets manually
+(asset linking happens via paired `asset-group-asset-link` proposals,
+which still need the operator to source images/videos that the plugin
+can't auto-generate).
+
+## Mutation surface (now expanded for v0.3.0)
+
+| What | API path | Plugin kind | When drafted |
 |---|---|---|---|
-| Account-level brand exclusion list | `customers/<id>/customerNegativeCriteria:mutate` | `customer-negative-criterion-add` (NEW, see change-execution) | drafted via `/recommendations` when a category is high-spend, zero-conv |
-| Audience signal: attach | `assetGroupSignals:mutate` (`create`) | `audience-attach` (NEW) | drafted by `/monthly` when no signals + ≥8w history |
-| Audience signal: detach | `assetGroupSignals:mutate` (`remove`) | `audience-detach` (paired with attach for /undo) | n/a |
-| Asset group asset add (headline/desc/image) | `assetGroupAssets:mutate` | `assets-add` + `assets-link` shape (existing kinds) | reuse the assets-flow pattern; field type changes per asset |
-| Asset group create / restructure | `assetGroups:mutate` | NOT in v1 scope | structural; UI-recommended |
-| URL expansion toggle | `campaigns:mutate` `update url_expansion_opt_out` | `campaign-setting-update` (existing kind) | rarely warranted; default off is usually right |
-| Bidding target tune | `campaigns:mutate` (target_roas / target_cpa) | `bidding-target-tune` (existing kind) | per `smart-bidding` |
+| Account-level brand exclusion list | `customerNegativeCriteria:mutate` | `customer-negative-criterion-add` | `/recommendations` when a `category_label` is high-spend, zero-conv |
+| Audience signal: attach / detach | `assetGroupSignals:mutate` | `audience-attach` / `audience-detach` | `/monthly` when no signals + ≥8w history |
+| Asset group asset add (headlines/descriptions/images/videos) | `assets:mutate` + `assetGroupAssets:mutate` | `assets-add` + `asset-group-asset-link` (paired) | check #4 above |
+| Asset group asset remove | `assetGroupAssets:mutate` | `asset-group-asset-unlink` | when an asset consistently underperforms |
+| Asset group status toggle | `assetGroups:mutate` (`update status`) | `asset-group-toggle` | operator-decision; pause an underperforming asset group |
+| Asset group create (theme split) | `assetGroups:mutate` (`create`) | `asset-group-create` | `/monthly` check #6; **`confirmation_required: explicit_yes`** |
+| Final URL exclusion | `campaignCriteria:mutate` (`type:WEBPAGE`) | `final-url-exclusion-add` | check #5 above |
+| Brand list create + attach | `assetSets:mutate` + `campaignAssetSets:mutate` | `brand-list-create` + `brand-list-attach` (paired) | operator-decision; **`confirmation_required: explicit_yes`** |
+| URL expansion toggle | `campaigns:mutate` (`url_expansion_opt_out`) | `campaign-setting-update` | rarely warranted |
+| Bidding target tune | `campaigns:mutate` | `bidding-target-tune` | per `smart-bidding` |
 
-## Out of v1 scope (operator-decision territory)
+## Still out of plugin scope (operator-decision territory)
 
-- Asset group creation from scratch
-- Listing-group / product-feed structure changes (Shopping/PMax overlap)
-- Final URL expansion changes for ROAS-sensitive accounts
-- Brand-list attachment (`brand_guidelines` resource)
+- **Listing-group / product-feed structure changes** (retail/e-commerce
+  PMax with Merchant Center feeds) — materially different mental
+  model from B2B SaaS Search; feed shapes are operator territory.
+  The plugin can read `asset_group_listing_group_filter` for
+  diagnostics but doesn't draft mutations against it.
+- **Brand_guidelines resource** (newer than `brand_list` / `assetSet`
+  with `type: BRAND_LIST`) — field availability varies by API version;
+  if a brand-list-create proposal returns `INVALID_FIELD` on
+  `assetSets:mutate`, fall back to the dashboard for now.
+- **PMax campaign creation from scratch** — full nested structure
+  (campaign → asset groups → assets → audience signals → listing
+  group filters for retail) is too much surface area for a
+  single proposal; structural setup remains UI work.
 
-For these, the audit surfaces the diagnostic ("LIMITED status because
-no audience signal attached"; "category 'free template' is 12% of
-spend with 0 conv") and recommends the operator act in the dashboard.
+For these, the audit surfaces the diagnostic and recommends the
+operator act in the dashboard.

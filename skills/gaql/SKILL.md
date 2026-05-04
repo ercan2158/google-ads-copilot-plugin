@@ -375,6 +375,82 @@ spend > 15% of total search spend).
 for ≥ 6 months — either the brand has zero search demand (concerning
 for SaaS at any maturity) or no campaign is bidding on brand terms.
 
+## Shared negative-keyword lists (cross-campaign)
+
+A `shared_set` is a named, reusable container of negative criteria.
+`shared_criterion` rows are the keywords inside; `campaign_shared_set`
+links a list to one or more campaigns. The 3-resource model is what
+makes "maintain once, apply to all 5 campaigns" feasible.
+
+### List inventory
+
+```sql
+SELECT
+  shared_set.id, shared_set.name, shared_set.type,
+  shared_set.status, shared_set.member_count, shared_set.reference_count
+FROM shared_set
+WHERE shared_set.status != 'REMOVED'
+ORDER BY shared_set.reference_count DESC
+```
+
+`shared_set.type` ∈ `NEGATIVE_KEYWORDS`, `NEGATIVE_PLACEMENTS`. The
+plugin's mining logic only drafts against `NEGATIVE_KEYWORDS`.
+`reference_count` = number of campaigns this list is attached to;
+`member_count` = number of keywords in the list.
+
+### Members of a specific list
+
+```sql
+SELECT
+  shared_criterion.shared_set,
+  shared_criterion.criterion_id,
+  shared_criterion.keyword.text, shared_criterion.keyword.match_type,
+  shared_criterion.type
+FROM shared_criterion
+WHERE shared_criterion.shared_set = 'customers/<id>/sharedSets/<list_id>'
+```
+
+### List → campaign attachments
+
+```sql
+SELECT
+  campaign_shared_set.campaign,
+  campaign_shared_set.shared_set,
+  campaign_shared_set.status
+FROM campaign_shared_set
+WHERE campaign_shared_set.status = 'ENABLED'
+```
+
+Drives the "negatives sprawl" advisory in `account-audit` Section 4 —
+groups negatives by text+match-type across campaigns to detect terms
+maintained per-campaign that should be in a shared list instead.
+
+### Negatives sprawl detection (cross-campaign duplication)
+
+The actual signal that a shared list would help: same keyword text +
+match type appearing as a per-campaign negative across 3+ campaigns.
+
+```sql
+SELECT
+  campaign.id, campaign.name,
+  campaign_criterion.criterion_id,
+  campaign_criterion.keyword.text, campaign_criterion.keyword.match_type,
+  campaign_criterion.negative
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'KEYWORD'
+  AND campaign_criterion.negative = TRUE
+  AND campaign_criterion.status = 'ENABLED'
+  AND campaign.status = 'ENABLED'
+ORDER BY campaign_criterion.keyword.text
+```
+
+Group rows by `(keyword.text, keyword.match_type)`. When a
+`(text, match_type)` pair appears in `count(distinct campaign.id) ≥ 3`,
+flag for migration to a shared list. The audit's recommendation is
+gated additionally on whether the operator has ≥ 5 ENABLED Search
+campaigns (otherwise the operational overhead of a shared list isn't
+worth it — keep per-campaign).
+
 ## Performance Max search terms (PMax)
 
 PMax search terms live on `campaign_search_term_insight`, not
