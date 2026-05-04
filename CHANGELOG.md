@@ -5,6 +5,130 @@ All notable changes to google-ads-copilot.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-04 — Shared negative lists + full PMax mutation surface + explicit_yes gate
+
+Two big feature areas plus one architecture polish:
+1. Shared (cross-campaign) negative-keyword lists — the maintain-once,
+   apply-to-many pattern operators ask for once they cross 5 Search
+   campaigns.
+2. Full PMax mutation surface — asset-group asset CRUD, asset-group
+   create for theme splits, final-URL exclusions, brand-list management.
+3. `confirmation_required: "explicit_yes"` envelope flag — a
+   second-factor (retype-the-proposal-id) gate for high-blast-radius
+   kinds.
+
+### Added — domain coverage
+
+- **Shared negative-keyword lists (Part 1).** Six new mutation kinds
+  for the `shared_set` + `shared_criterion` + `campaign_shared_set`
+  resource trio:
+  - `negative-list-create` — create a named NEGATIVE_KEYWORDS asset
+    set
+  - `negative-list-add-keyword` — add keywords to an existing list
+  - `negative-list-remove-keyword` — pull a keyword from a list
+  - `negative-list-attach` — link a list to a campaign
+  - `negative-list-detach` — unlink (paired inverse for /undo)
+  - `negative-list-delete` — delete the list (cascade-aware,
+    `confirmation_required: explicit_yes`, **non-invertible**)
+  Drafted by `/search-terms`, `/weekly`, `/monthly` when negatives
+  sprawl audit detects ≥3 campaigns sharing a theme on accounts with
+  ≥5 ENABLED Search campaigns. Worked example at
+  [`change-execution/examples/shared-negatives.md`](skills/change-execution/examples/shared-negatives.md).
+- **Negatives sprawl audit** (`account-audit` Section 4 advisory) —
+  groups per-campaign negatives by `(text, match_type)`; flags 🟡 when
+  the same pair appears in ≥3 campaigns AND the account has ≥5 Search
+  campaigns AND no existing shared list contains the term. Also flags
+  orphaned shared lists (`reference_count = 0`).
+- **Full PMax mutation surface (Part 2).** Eight new mutation kinds:
+  - `asset-group-asset-link` / `asset-group-asset-unlink` — attach
+    headlines, descriptions, images, videos to an asset group's pool
+    via `assetGroupAssets:mutate`. Pairs with `assets-add` (existing
+    kind) for the create-then-link flow.
+  - `asset-group-toggle` — pause/enable an asset group; drift-checked.
+  - `asset-group-create` — create a new asset group within an existing
+    PMax campaign for theme splitting; **`confirmation_required:
+    explicit_yes`**, always created PAUSED.
+  - `final-url-exclusion-add` — block specific URLs from PMax serving
+    via `campaignCriteria:mutate` with `type: WEBPAGE`.
+  - `brand-list-create` + `brand-list-attach` — create a `BRAND_LIST`
+    asset set and attach to PMax campaigns. **`confirmation_required:
+    explicit_yes`** on create.
+- **PMax skill expansions:**
+  - Check #4: asset-coverage audit per asset group (HEADLINE ≥5,
+    DESCRIPTION ≥4, MARKETING_IMAGE ≥4 plugin floors above Google's
+    required minimums) drives `assets-add` + `asset-group-asset-link`
+    paired flow.
+  - Check #5: final-URL exclusion coverage audit — flags PMax campaigns
+    with zero exclusions when `context/persona-overrides.md` declares
+    URLs that should never serve.
+  - Check #6: theme-split detection via `category_label` cluster
+    divergence; high-blast `asset-group-create` proposal with manual
+    asset linking.
+  - Volume floor revised: 50/30d minimum, 100/30d healthy gate (was
+    30/50). PMax's multi-surface model needs more signal than
+    single-surface Search — corrected from the canonical bands in
+    `smart-bidding`.
+
+### Added — safety
+
+- **`confirmation_required: "explicit_yes"` envelope flag.** Drafters
+  add this to high-blast-radius proposals; `bin/apply` then prompts
+  for a verbatim retype of the proposal_id (instead of accepting `y`)
+  even when invoked with `--confirm`. Mistype aborts with proposal
+  left in place. Three kinds are currently REQUIRED to set this flag
+  (validation rejects them otherwise):
+  - `negative-list-delete` (cascades through criteria + links;
+    non-invertible)
+  - `asset-group-create` (creates structural entity in PMax)
+  - `brand-list-create` (affects every attached PMax campaign)
+
+### Changed
+
+- Two new worked examples:
+  - [`change-execution/examples/shared-negatives.md`](skills/change-execution/examples/shared-negatives.md)
+    — 3-step paired-proposal flow with auto-substitution
+  - [`change-execution/examples/asset-group-flow.md`](skills/change-execution/examples/asset-group-flow.md)
+    — PMax creative-refresh with HEADLINE/DESCRIPTION linking
+  - [`change-execution/examples/brand-list.md`](skills/change-execution/examples/brand-list.md)
+    — 3-step brand-list create + populate + attach with explicit_yes
+- `apply-contract.md`: per-kind inverse rules added for all 14 new
+  kinds; cross-kind drift-check section updated to include
+  `asset-group-toggle`.
+- `change-execution/SKILL.md`: kinds table grew from 22 to 36;
+  added "High-blast-radius envelope flag" section explaining
+  `confirmation_required`.
+- `bin/validate-proposal`: KNOWN_KINDS expanded with all 14 new kinds;
+  validates `confirmation_required` field shape; rejects high-blast
+  kinds without the flag.
+- `bin/apply`: implements the explicit_yes prompt path that
+  short-circuits even `--confirm` mode.
+- `commands/search-terms.md` + `commands/weekly.md`: cross-campaign
+  sprawl check decision rule routes ≥3-campaign themes to shared-list
+  flow when account has ≥5 Search campaigns.
+
+### Tests
+
+- `bin/test-apply.sh` extended from 27 to 38 assertions:
+  - 7 new validate-proposal cases for new kinds + explicit_yes flag
+    validation (recognized-kind tests, high-blast rejection without
+    flag, accept with flag, invalid-value rejection)
+  - 4 new apply cases for explicit_yes happy-path + mismatch path
+- `bin/test-ga.py` unchanged at 35 assertions
+- **73 mocked assertions total**, no network, all green.
+- Mock `ga` script in test-apply.sh fixed to NOT consume stdin —
+  previously the `cat`-stdin logging path ate the operator's
+  read-rp input on explicit_yes-confirmation tests.
+
+### Total surface area
+
+| Metric | 0.2.0 | 0.3.0 |
+|---|---|---|
+| Slash commands | 12 | 12 |
+| Skills | 10 | 10 |
+| Mutation kinds | 22 | 36 |
+| Worked examples | 6 | 9 |
+| Mocked test assertions | 62 | 73 |
+
 ## [0.2.0] — 2026-05-03 — Domain coverage + Python migration
 
 Two big shifts: (a) the audit went from 8 sections to 10 with two

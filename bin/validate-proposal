@@ -25,6 +25,13 @@ KNOWN_KINDS=(
   bidding-strategy-shift bidding-target-tune
   campaign-setting-update audience-attach audience-detach
   customer-negative-criterion-add
+  negative-list-create negative-list-add-keyword
+  negative-list-remove-keyword negative-list-attach
+  negative-list-detach negative-list-delete
+  asset-group-asset-link asset-group-asset-unlink
+  asset-group-toggle asset-group-create
+  final-url-exclusion-add
+  brand-list-create brand-list-attach
 )
 
 INPUT=$(cat)
@@ -78,6 +85,22 @@ VF=$(echo "$INPUT" | jq -r '.validate_first | type')
 case "$VF" in
   boolean|null) ;;
   *) err "validate_first must be boolean if present (got type: $VF)" ;;
+esac
+
+# confirmation_required is either absent (null) or the literal "explicit_yes"
+CR=$(echo "$INPUT" | jq -r '.confirmation_required // empty')
+if [[ -n "$CR" && "$CR" != "explicit_yes" ]]; then
+  err "confirmation_required must be omitted or set to \"explicit_yes\" (got: $CR)"
+fi
+
+# Kinds that REQUIRE confirmation_required: explicit_yes — high-blast operations
+# documented in change-execution/SKILL.md "High-blast-radius envelope flag"
+case "$KIND" in
+  negative-list-delete|asset-group-create|brand-list-create)
+    if [[ "$CR" != "explicit_yes" ]]; then
+      err "kind '$KIND' requires confirmation_required: \"explicit_yes\" in the envelope (high-blast-radius operation, see change-execution/SKILL.md)"
+    fi
+    ;;
 esac
 
 # Body shape: exactly one of operations[]/body{} or neither

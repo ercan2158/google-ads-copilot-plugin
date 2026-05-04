@@ -132,6 +132,7 @@ KIND=$(echo "$PROPOSAL_JSON" | jq -re '.kind')
 METHOD=$(echo "$PROPOSAL_JSON" | jq -re '.method')
 ENDPOINT=$(echo "$PROPOSAL_JSON" | jq -re '.endpoint')
 VALIDATE_FIRST=$(echo "$PROPOSAL_JSON" | jq -r '.validate_first // false')
+CONFIRMATION_REQUIRED=$(echo "$PROPOSAL_JSON" | jq -r '.confirmation_required // empty')
 
 # 5. Auto-substitute <resourceName from proposal X op N> placeholders -------
 # (so paired proposals like assets-add → assets-link work without manual edit)
@@ -241,7 +242,24 @@ if [[ "$MODE" == "--plan" ]]; then
 fi
 
 # 9. Confirmation -----------------------------------------------------------
-if [[ "$MODE" != "--confirm" ]]; then
+# Standard kinds: y/n at the prompt (or skipped via --confirm).
+# explicit_yes kinds: ALWAYS require retyping the proposal_id verbatim,
+# even when invoked with --confirm. The flag is the kind's safety
+# contract; --confirm only suppresses the y/n for the standard path.
+if [[ "$CONFIRMATION_REQUIRED" == "explicit_yes" ]]; then
+  echo
+  echo "⚠️  HIGH-BLAST-RADIUS OPERATION: $KIND ($PROPOSAL_ID)"
+  echo "  endpoint: $METHOD $ENDPOINT"
+  echo "  ops:      $NUM_OPS"
+  echo
+  echo "  This kind requires explicit_yes confirmation:"
+  echo "  retype the proposal_id verbatim to proceed, or anything else to abort."
+  read -rp "  proposal_id: " TYPED
+  if [[ "$TYPED" != "$PROPOSAL_ID" ]]; then
+    echo "[apply] skipped (confirmation token did not match). Proposal left in place."
+    exit 0
+  fi
+elif [[ "$MODE" != "--confirm" ]]; then
   echo
   echo "About to apply: $KIND ($PROPOSAL_ID)"
   echo "  endpoint: $METHOD $ENDPOINT"

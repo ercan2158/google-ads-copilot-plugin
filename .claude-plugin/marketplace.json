@@ -6,8 +6,8 @@
     "url": "https://github.com/ercan2158"
   },
   "metadata": {
-    "description": "Safe, opinionated AI Google Ads operator for technical founders running their own Search ads",
-    "version": "0.2.0",
+    "description": "Safe, opinionated AI Google Ads operator for technical founders running Search + Performance Max",
+    "version": "0.3.0",
     "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin",
     "repository": "https://github.com/ercan2158/google-ads-copilot-plugin"
   },
@@ -15,7 +15,7 @@
     {
       "name": "google-ads-copilot",
       "source": "./",
-      "description": "12 slash commands (bootstrap, daily, weekly, monthly, search-terms, budgets, creative, recommendations, explain, changes, undo, apply) backed by a senior-Google-Ads-operator agent and 10 skills (gaql, account-audit, conversion-health, smart-bidding, pmax, search-term-mining, budget-management, creative-management, change-execution, explain-to-beginner). Mutation safety is enforced by a deterministic shell script (bin/apply), not by the LLM: account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal resource-name auto-substitution. The 'apply' command is the only one that mutates the account; everything else is read-only or writes a markdown proposal file you review first.",
+      "description": "12 slash commands (bootstrap, daily, weekly, monthly, search-terms, budgets, creative, recommendations, explain, changes, undo, apply) backed by a senior-Google-Ads-operator agent (Opus) and 10 skills (gaql, account-audit, conversion-health, smart-bidding, pmax, search-term-mining, budget-management, creative-management, change-execution, explain-to-beginner). 36 documented mutation kinds covering Search and Performance Max: shared negative-keyword lists, PMax asset-group asset CRUD + theme split, final-URL exclusions, brand-list management, plus the existing kinds for negatives/budgets/creative/keywords/bids/extensions/Customer Match/recommendations. Mutation safety enforced by deterministic shell scripts (bin/apply + bin/validate-proposal + bin/validate-workspace), not by the LLM: account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal resource-name auto-substitution, and an explicit_yes second-factor gate (retype the proposal_id) for high-blast kinds like negative-list-delete and asset-group-create.",
       "category": "advertising",
       "tags": ["google-ads", "advertising", "marketing", "ppc", "operations", "saas", "smart-bidding", "performance-max", "conversion-tracking"],
       "homepage": "https://github.com/ercan2158/google-ads-copilot-plugin"

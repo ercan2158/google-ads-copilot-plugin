@@ -62,11 +62,13 @@ EOF
 #   fail:<msg>    → echo msg to stderr, exit 1 (transport failure)
 cat > "$MOCKDIR/ga" <<'EOF'
 #!/usr/bin/env bash
+# Mock ga. NOTE: must NOT read stdin — bin/apply passes request bodies via
+# argv ($3), and consuming stdin here would eat the operator's read -rp
+# input on explicit_yes-confirmation kinds, hanging the test.
 LOG="${MOCK_GA_LOG:-/tmp/mock-ga.log}"
 SCRIPT="${MOCK_GA_SCRIPT:-}"
 COUNTER="${MOCK_GA_COUNTER:-/tmp/mock-ga-counter}"
 echo "ARGS=$*" >> "$LOG"
-echo "STDIN=$( [[ -t 0 ]] || cat )" >> "$LOG" 2>/dev/null || true
 if [[ -n "$SCRIPT" && -f "$SCRIPT" ]]; then
   n=$(cat "$COUNTER" 2>/dev/null || echo 0)
   n=$((n + 1)); echo "$n" > "$COUNTER"
@@ -142,6 +144,42 @@ assert_grep "validate exits 0 on unknown kind" 'exit=0' "$out"
 # A9: parameterless body (neither operations nor body) accepted (e.g. :run)
 out=$(echo '{"proposal_id":"x","kind":"customer-match-upload","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/offlineUserDataJobs/1:run"}' | "$VALIDATE_TEST" 2>&1; echo "exit=$?")
 assert_grep "validate accepts parameterless body (e.g. :run)" 'exit=0' "$out"
+
+# A10: new shared-list kinds are recognized (no WARN on known kind)
+out=$(echo '{"proposal_id":"x","kind":"negative-list-create","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/sharedSets:mutate","operations":[{"create":{"name":"x","type":"NEGATIVE_KEYWORDS"}}]}' | "$VALIDATE_TEST" 2>&1; echo "exit=$?")
+if echo "$out" | grep -q 'WARN — kind'; then
+  echo "  FAIL validate should recognize negative-list-create as known kind"
+  FAIL=$((FAIL + 1))
+else
+  echo "  PASS validate recognizes negative-list-create as known kind"
+fi
+
+# A11: PMax asset-group kinds are recognized
+out=$(echo '{"proposal_id":"x","kind":"asset-group-asset-link","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/assetGroupAssets:mutate","operations":[{"create":{"assetGroup":"x","asset":"y","fieldType":"HEADLINE"}}]}' | "$VALIDATE_TEST" 2>&1; echo "exit=$?")
+if echo "$out" | grep -q 'WARN — kind'; then
+  echo "  FAIL validate should recognize asset-group-asset-link as known kind"
+  FAIL=$((FAIL + 1))
+else
+  echo "  PASS validate recognizes asset-group-asset-link as known kind"
+fi
+
+# A12: high-blast kinds REJECTED without confirmation_required: explicit_yes
+out=$(echo '{"proposal_id":"x","kind":"negative-list-delete","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/sharedSets:mutate","operations":[{"remove":"customers/1234567890/sharedSets/1"}]}' | "$VALIDATE_TEST" 2>&1 || true)
+assert_grep "validate rejects negative-list-delete without explicit_yes flag" 'requires confirmation_required' "$out"
+
+out=$(echo '{"proposal_id":"x","kind":"asset-group-create","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/assetGroups:mutate","operations":[{"create":{"campaign":"x","name":"y","status":"PAUSED"}}]}' | "$VALIDATE_TEST" 2>&1 || true)
+assert_grep "validate rejects asset-group-create without explicit_yes flag" 'requires confirmation_required' "$out"
+
+out=$(echo '{"proposal_id":"x","kind":"brand-list-create","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/assetSets:mutate","operations":[{"create":{"name":"x","type":"BRAND_LIST"}}]}' | "$VALIDATE_TEST" 2>&1 || true)
+assert_grep "validate rejects brand-list-create without explicit_yes flag" 'requires confirmation_required' "$out"
+
+# A13: high-blast kind WITH explicit_yes is accepted
+out=$(echo '{"proposal_id":"x","kind":"negative-list-delete","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/sharedSets:mutate","confirmation_required":"explicit_yes","operations":[{"remove":"customers/1234567890/sharedSets/1"}]}' | "$VALIDATE_TEST" 2>&1; echo "exit=$?")
+assert_grep "validate accepts negative-list-delete with explicit_yes flag" 'exit=0' "$out"
+
+# A14: confirmation_required must be omitted or "explicit_yes" — anything else rejected
+out=$(echo '{"proposal_id":"x","kind":"negatives","account_id":"1234567890","method":"POST","endpoint":"/v23/customers/1234567890/campaignCriteria:mutate","confirmation_required":"yolo","operations":[{"create":{"x":1}}]}' | "$VALIDATE_TEST" 2>&1 || true)
+assert_grep "validate rejects invalid confirmation_required value" 'must be omitted or set to' "$out"
 
 # ============================================================================
 # Section B: bin/apply
@@ -347,6 +385,64 @@ else
   fi
   FAIL=$((FAIL + 1))
 fi
+
+# B11: confirmation_required prompts for proposal_id retype, accepts on match
+cat > "$WORKDIR/workspace/proposals/2026-05-04-test-explicit-yes.md" <<'PMD'
+# Explicit-yes happy path
+
+```json
+{
+  "proposal_id": "2026-05-04-test-explicit-yes",
+  "kind": "negative-list-delete",
+  "account_id": "1234567890",
+  "method": "POST",
+  "endpoint": "/v23/customers/1234567890/sharedSets:mutate",
+  "validate_first": true,
+  "confirmation_required": "explicit_yes",
+  "operations": [{"remove": "customers/1234567890/sharedSets/1"}]
+}
+```
+PMD
+SCRIPT="$MOCKDIR/script-explicit-happy"
+COUNTER="$MOCKDIR/counter-explicit-happy"
+rm -f "$COUNTER"
+{
+  echo 'ok:{"results":[]}'   # dry-run
+  echo 'ok:{"results":[{"resourceName":"customers/1234567890/sharedSets/1"}]}'
+} > "$SCRIPT"
+# Pipe the proposal_id as stdin; --confirm flag is ignored for explicit_yes (always prompts)
+out=$(MOCK_GA_SCRIPT="$SCRIPT" MOCK_GA_COUNTER="$COUNTER" \
+  "$APPLY_TEST" 2026-05-04-test-explicit-yes --confirm <<<"2026-05-04-test-explicit-yes" 2>&1 || true)
+assert_grep "apply with explicit_yes accepts proper retype" 'applied. 1 operation' "$out"
+[[ -f "$WORKDIR/workspace/proposals/applied/2026-05-04-test-explicit-yes.md" ]] \
+  && echo "  PASS explicit_yes happy-path moves proposal to applied/" \
+  || { echo "  FAIL explicit_yes happy-path didn't move proposal"; FAIL=$((FAIL + 1)); }
+
+# B12: confirmation_required rejects on mismatched retype, even with --confirm
+cat > "$WORKDIR/workspace/proposals/2026-05-04-test-explicit-mismatch.md" <<'PMD'
+```json
+{
+  "proposal_id": "2026-05-04-test-explicit-mismatch",
+  "kind": "asset-group-create",
+  "account_id": "1234567890",
+  "method": "POST",
+  "endpoint": "/v23/customers/1234567890/assetGroups:mutate",
+  "validate_first": true,
+  "confirmation_required": "explicit_yes",
+  "operations": [{"create": {"campaign": "x", "name": "y", "status": "PAUSED"}}]
+}
+```
+PMD
+SCRIPT="$MOCKDIR/script-explicit-mismatch"
+COUNTER="$MOCKDIR/counter-explicit-mismatch"
+rm -f "$COUNTER"
+echo 'ok:{"results":[]}' > "$SCRIPT"   # dry-run only
+out=$(MOCK_GA_SCRIPT="$SCRIPT" MOCK_GA_COUNTER="$COUNTER" \
+  "$APPLY_TEST" 2026-05-04-test-explicit-mismatch --confirm <<<"y" 2>&1 || true)
+assert_grep "apply with explicit_yes rejects single-y answer" 'confirmation token did not match' "$out"
+[[ -f "$WORKDIR/workspace/proposals/2026-05-04-test-explicit-mismatch.md" ]] \
+  && echo "  PASS explicit_yes mismatch leaves proposal in place" \
+  || { echo "  FAIL explicit_yes mismatch moved the proposal"; FAIL=$((FAIL + 1)); }
 
 # B10: substitution failure when the prior proposal isn't in change-log
 cat > "$WORKDIR/workspace/proposals/2026-05-03-test-sub-fail.md" <<'PMD'

@@ -1,7 +1,7 @@
 {
   "name": "google-ads-copilot",
-  "version": "0.2.0",
-  "description": "Safe AI Google Ads operator for technical founders. 12 slash commands read your account and propose mutations as markdown files; only /apply mutates, with five mechanically-enforced gates (account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal substitution). Backed by the official google-ads Python client.",
+  "version": "0.3.0",
+  "description": "Safe AI Google Ads operator for technical founders. 12 slash commands read your account and propose mutations as markdown files; only /apply mutates, with five mechanically-enforced gates (account-ID pin, schema validation, validate_only dry-run, append-only change-log, paired-proposal substitution) plus an explicit_yes second-factor gate for high-blast operations. 36 mutation kinds covering Search and Performance Max — including shared negative-keyword lists, PMax asset-group asset CRUD, asset-group create + theme split, final-URL exclusions, and brand-list management. Backed by the official google-ads Python client.",
   "author": {
     "name": "Ercan",
     "email": "kuercan@proton.me",
