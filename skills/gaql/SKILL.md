@@ -10,19 +10,28 @@ API response — a JSON object with a top-level `results` array on success,
 or a top-level `error` object on failure. For mutations use
 `change-execution`.
 
-## Last 24h spend + conversions per campaign
+## Yesterday's spend + conversions per campaign
 
 ```sql
 SELECT
   campaign.id, campaign.name, campaign.status,
   metrics.cost_micros, metrics.conversions, metrics.clicks, metrics.impressions
 FROM campaign
-WHERE segments.date DURING LAST_DAY
+WHERE segments.date DURING YESTERDAY
   AND campaign.status != 'REMOVED'
 ORDER BY metrics.cost_micros DESC
 ```
 
-`cost_micros / 1_000_000` to get currency units.
+`cost_micros / 1_000_000` to get currency units. `YESTERDAY` is the
+GAQL literal — there is no `LAST_DAY` (a common mistake; valid date
+literals are `TODAY`, `YESTERDAY`, `LAST_7_DAYS`, `LAST_14_DAYS`,
+`LAST_30_DAYS`, `LAST_60_DAYS`, `LAST_180_DAYS`, `LAST_BUSINESS_WEEK`,
+`THIS_MONTH`, `LAST_MONTH`, `THIS_WEEK_SUN_TODAY`, `THIS_WEEK_MON_TODAY`,
+`LAST_WEEK_SUN_SAT`, `LAST_WEEK_MON_SUN`).
+
+For intraday "is anything on fire right now" checks, use `TODAY` —
+but data is partial and CPA reads will be misleading. `YESTERDAY` is
+the stable choice for the daily anomaly check.
 
 ## Last 30d search terms with low/no conversion
 

@@ -61,6 +61,9 @@ cross-campaign budget allocation harder.
 | `LEARNING_SETTING_CHANGE` | Recent target/setting change | 🟡 if < 7d, 🔴 if > 7d |
 | `LEARNING_BUDGET_CHANGE` | Recent budget change kicked it back to learning | 🟡 short-term; investigate if recurring |
 | `LEARNING_CAMPAIGN_KEYWORDS_CHANGE` | Structural change re-triggered learning | 🟡 short-term |
+| `LEARNING_COMPOSITION_CHANGE` | Network/structural composition shifted (e.g. ad-group set, asset additions) — relearning | 🟡 short-term; investigate if recurring |
+| `LEARNING_CONVERSION_TYPE_CHANGE` | Conv action mix changed | 🟡 short-term; cross-check against `conversion-health` for related fixes |
+| `LEARNING_CONVERSION_SETTING_CHANGE` | Conv action settings (lookback / counting / value) changed | 🟡 short-term |
 | `LIMITED_BY_BID_CEILING` | Bid ceiling capping the strategy | 🔴 raise the ceiling or accept the loss |
 | `LIMITED_BY_BID_FLOOR` | Bid floor capping (rare) | 🔴 lower the floor |
 | `MISCONFIGURED_ZERO_ELIGIBILITY` | No conversions in lookback window — strategy can't function | 🔴 revert to plain `MANUAL_CPC` until volume returns (not `ENHANCED_CPC` — see check #3) |

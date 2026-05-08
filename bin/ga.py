@@ -187,6 +187,27 @@ def build_client(creds: dict[str, Any], login_customer_id: str | None):
 # ----- error formatting ------------------------------------------------------
 
 
+def _which_oneof_error_code(error_code: Any) -> str | None:
+    """Resolve the set field of a GoogleAdsErrorCode oneof.
+
+    google-ads-python with use_proto_plus=True wraps protobuf messages in
+    proto-plus types that don't expose WhichOneof directly. The underlying
+    protobuf message lives on `_pb`. The unit-test stub also implements
+    WhichOneof on the wrapper for parity, so we try both.
+    """
+    if hasattr(error_code, "_pb"):
+        try:
+            return error_code._pb.WhichOneof("error_code")
+        except Exception:  # noqa: BLE001 — proto API quirks
+            pass
+    if hasattr(error_code, "WhichOneof"):
+        try:
+            return error_code.WhichOneof("error_code")
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
 def google_ads_exception_to_dict(ex: GoogleAdsException) -> dict[str, Any]:
     """Render a GoogleAdsException in the same shape Google's REST API
     would return on error, so existing .error consumers (skills, bin/apply)
@@ -195,9 +216,10 @@ def google_ads_exception_to_dict(ex: GoogleAdsException) -> dict[str, Any]:
     for err in ex.failure.errors:
         d: dict[str, Any] = {"message": err.message}
         # The error_code is a oneof — find which code is set
-        which = err.error_code.WhichOneof("error_code")
+        which = _which_oneof_error_code(err.error_code)
         if which:
-            d["errorCode"] = {which: getattr(err.error_code, which).name}
+            sub = getattr(err.error_code, which, None)
+            d["errorCode"] = {which: getattr(sub, "name", str(sub))}
         if err.location and err.location.field_path_elements:
             d["location"] = {
                 "fieldPathElements": [
@@ -206,11 +228,30 @@ def google_ads_exception_to_dict(ex: GoogleAdsException) -> dict[str, Any]:
                 ]
             }
         errors.append(d)
+    # ex.error is a grpc._SingleThreadedRendezvous; ex.error.code() returns a
+    # grpc.StatusCode whose .value is a tuple (int_code, friendly_name) and
+    # whose .name is the enum identifier ("INVALID_ARGUMENT" etc.). Use the
+    # int code for `code` and the enum name for `status` to mirror Google's
+    # REST error shape.
+    grpc_code = ex.error.code() if hasattr(ex.error, "code") else None
+    raw_value = getattr(grpc_code, "value", None) if grpc_code else None
+    if isinstance(raw_value, tuple):  # real grpc.StatusCode
+        code_int = raw_value[0]
+    elif isinstance(raw_value, int):  # test stub or flat int
+        code_int = raw_value
+    else:
+        code_int = 0
+    status_name = grpc_code.name if grpc_code else "UNKNOWN"
+    # Prefer the first per-error message over the rendezvous's repr, which
+    # otherwise dumps the whole gRPC traceback into the `message` field.
+    top_message = errors[0]["message"] if errors else (
+        ex.error.details() if hasattr(ex.error, "details") else str(ex)
+    )
     return {
         "error": {
-            "code": ex.error.code().value if hasattr(ex.error, "code") else 0,
-            "message": ex.error.message() if hasattr(ex.error, "message") else str(ex),
-            "status": ex.error.code().name if hasattr(ex.error, "code") else "UNKNOWN",
+            "code": code_int,
+            "message": top_message,
+            "status": status_name,
             "details": [
                 {
                     "@type": "type.googleapis.com/google.ads.googleads."
