@@ -1,5 +1,8 @@
 # Pinned Python deps for google-ads-copilot.
 # Compatible-release operator (~=) — patch updates install, minor breaks don't.
 # Update these intentionally, not as a side-effect of a fresh setup.
-google-ads~=27.0
+#
+# google-ads minimum 28.4 — earlier versions cap Python at 3.13. 28.4+ supports
+# Python 3.14. Upper bound <31 keeps us inside the current major + next.
+google-ads>=28.4,<31
 PyYAML~=6.0
